@@ -319,22 +319,36 @@ public:
  * The other use (for CapturedCont) is to speed up copying std::function objects that would otherwise require copying a heap object
  * on each copy.  Incrementing and decrementing the refernce counter is faster than calling new and delete.
  *
- * Note, there's a bug/complication here.  Lambdas that are held in CapturedConts that form cycles of ownership will never be collected.
+ * A weirdness with CapturedVar<T> where T is a std function type such as CapturedCont is that while lambdas can be stored in 
+ * std::function<> types you can't match the type of a lambda to automatically convert to std::function as a result I couldn't give
+ * CapturedCont a shortcut assignment such as "foo=[=](){...};", instead you have to use * to expose the std::function inside and assign 
+ * to that.  Ie it's "CapturedCont foo; *foo=[=](){...};"  The difference is the "*" 
+ * Avoid assigning to CapturedVar<T> without the *.
+ * 
+ * Note, there's a bug/complication with the use of reference counters here.  
+ * Lambdas that are held in CapturedConts that can form cycles of ownership will never be collected.
  * In normal programs that would rarely come up, but I'm afraid that in logic style programming it will come up quite often, so
  * there's a memory leak unless a somewhat complicated fix is used.
  * The fix is:
  * Any CapturedCont that's part of a cycle (even a self reference) needs a shadow ptr variable thus:
- * CapturedContPtr foo_ptr = foo.get();
- * and inside the lambdas use *foo_ptr everywhere you would have used foo. *foo_ptr can convert to CapturedCont as needed, say to pass
- * as a parameter.  For the sake of convenience you can also use foo_ptr directly without the * in Search::alt() and Search::tail()
+ * UncountedCont foo_uncounted = foo;
+ * and inside the lambdas use foo_uncounted everywhere you would have used foo. foo_uncounted can convert to CapturedCont as needed, say to pass
+ * as a parameter.  
  * 
  * For all cycles of more than one CapturedCont you have to call combineRefs on the set like so:
  * CapturedCont foo,bar,baz;
- * CapturedContPtr foo_ptr = foo.get(),bar_ptr=bar.get(),baz_ptr=baz.get();
+ * UncountedCont foo_uncounted = foo,bar_uncounted=bar,baz_uncounted=baz;
  * combineRefs(foo,bar,baz);
- * 
+ * and inside of the lambdas that foo,bar and baz are set to use foo_uncounted, bar_uncounted and baz_uncounted instead of foo,bar&baz
  * Having done that incantation, the problem of circular references of CapturedConts is solved.
+ *
+ * What combineRefs does combine the reference count of the objects it refers to so that for the sake of garbage collection the
+ * whole set is managed as a single object. A reference to one is a reference to all.
  */
+
+template <typename T>
+class UncountedVar;
+
 
 template<typename T>
 class CapturedVar : public intrusive_ptr< CapturedVarLetter<T> >
@@ -348,6 +362,7 @@ public:
 	CapturedVar() :intrusive_ptr(new CapturedVarLetter<T>()) {}
 
 	CapturedVar(const CapturedVar<T> &o) :intrusive_ptr(static_cast<const intrusive_ptr< CapturedVarLetter<T> > &>(o)) {}
+	CapturedVar(const UncountedVar<T> &o);
 
 	CapturedVarLetter<T> & internal() {
 		return *get();
@@ -359,13 +374,28 @@ public:
 
 
 typedef CapturedVar<Continuation> CapturedCont;
-typedef CapturedVarLetter<Continuation> *CapturedContPtr;
+//typedef CapturedVarLetter<Continuation> *UncountedCont;
+template <typename T>
+class UncountedVar
+{
+public:
+	CapturedVarLetter<T> * value;
+	class UncountedVar(const CapturedVar<T> &c) :value(c.get()) {}
+	CapturedVarLetter<T> & operator *() const { return *value; }
+	CapturedVarLetter<T> * operator->() const { return value;  }
+};
+
+typedef UncountedVar<Continuation> UncountedCont;
+
+template<typename T>
+CapturedVar<T>::CapturedVar(const UncountedVar<T> &o) :intrusive_ptr(o.value) {}
+
 
 template<typename T,typename ... Types>
 CombinableRefCount * combineRefs(const CapturedVar<T> &_first, Types ... rest)
 {
 	CombinableRefCount *first = _first.get();
-		CombinableRefCount *u = combineRefs(rest...);
+	CombinableRefCount *u = combineRefs(rest...);
 	first->_forward = u;
 	u->_ref += first->_ref;
 	first->_next = u->_next;
@@ -379,6 +409,7 @@ struct clean_stack_exception
 };
 
 const int STACK_SAVER_DEPTH = 30;
+
 
 class Search
 {
@@ -421,13 +452,13 @@ public:
 	std::map<const char *,boost::any> results;
 	friend void fail(Search &s);
 	bool running() { return !failed;  }
-	void save_undo(CapturedCont c) { amblist.push_back(AmbRecord{AMB_UNDO,c}); }
+	void save_undo(const CapturedCont &c) { amblist.push_back(AmbRecord{AMB_UNDO,c}); }
 	//save_undo is only called from unify so I don't think we need this conversion
-	void save_undo(CapturedContPtr c) { amblist.push_back(AmbRecord{ AMB_UNDO,CapturedCont(*c) }); }
-	void alt(CapturedCont c) { amblist.push_back(AmbRecord{ AMB_ALT,c }); }
-	void alt(CapturedContPtr c) { amblist.push_back(AmbRecord{ AMB_ALT,CapturedCont(*c) }); }
+	void save_undo(const UncountedCont &c) { amblist.push_back(AmbRecord{ AMB_UNDO,CapturedCont(c) }); }
+	void alt(const CapturedCont &c) { amblist.push_back(AmbRecord{ AMB_ALT,c }); }
+	void alt(const UncountedCont &c) { amblist.push_back(AmbRecord{ AMB_ALT,CapturedCont(c) }); }
 
-	void tail(CapturedCont c)
+	void tail(const CapturedCont &c)
 	{
 		if (--stack_saver < 1) {
 			cont = c;
@@ -435,7 +466,7 @@ public:
 		}
 		(*c)(*this);
 	}
-	void tail(Continuation c)
+	void tail(const Continuation &c)
 	{
 		if (--stack_saver < 1) {
 			cont = c;
@@ -443,7 +474,7 @@ public:
 		}
 		c(*this);
 	}
-	void tail(CapturedContPtr c)
+	void tail(const UncountedCont &c)
 	{
 		if (--stack_saver < 1) {
 			cont = *c;
@@ -452,6 +483,7 @@ public:
 		(c->value)(*this);
 
 	}
+
 	//Note this can throw a clean_stack_exception so only call in tail position
 	//you can use the fail() function defined below the class as a continuation
 	//instead
@@ -520,6 +552,8 @@ void fail(Search &s)
 	s.tail(s._for_fail());
 }
 
+
+
 const CapturedCont Search::captured_fail = (Continuation)fail_fn;
 
 
@@ -530,7 +564,7 @@ CapturedCont stream1(CapturedVar<int> m, CapturedCont c)
 {
 	CapturedVar<int> n(0);
 	CapturedCont rest;
-	CapturedContPtr rest_ptr = rest.get();
+	UncountedCont rest_uncounted = rest;
 
 
 	*rest = [=](Search &s)
@@ -540,7 +574,7 @@ CapturedCont stream1(CapturedVar<int> m, CapturedCont c)
 			s.fail();
 		}
 		else {
-			s.alt(rest_ptr);
+			s.alt(rest_uncounted);
 //			cout << "n is " << *n << endl;
 			*m = *n;
 			s.tail(c);
@@ -556,7 +590,7 @@ CapturedCont stream2(CapturedVar<int> m, CapturedCont c)
 {
 	CapturedVar<int> n(0);
 	CapturedCont rest;
-	CapturedContPtr rest_ptr = rest.get();
+	UncountedCont rest_uncounted = rest;
 
 	*rest = [=](Search &s)
 	{
@@ -565,7 +599,7 @@ CapturedCont stream2(CapturedVar<int> m, CapturedCont c)
 			s.fail();
 		}
 		else {
-			s.alt(rest_ptr);
+			s.alt(rest_uncounted);
 //			cout << "m is " << *n * *n << endl;
 			*m = *n * *n;
 			s.tail(c);
@@ -578,10 +612,12 @@ void AmbTest(Search &s)
 {
 	CapturedVar<int> n, m;
 	CapturedCont c1, c2, c3;
+	UncountedCont c1_u = c1, c2_u = c2, c3_u = c3;
 	combineRefs(c1, c2, c3);
+
 	//note it can't safely use Search inside of functions that return a value
-	*c1 = [=](Search &s) { s.tail(stream1(n,c2)); };
-	*c2 = [=](Search &s) { s.tail(stream2(m,c3)); };
+	*c1 = [=](Search &s) { s.tail(stream1(n,c2_u)); };
+	*c2 = [=](Search &s) { s.tail(stream2(m,c3_u)); };
 	*c3 = [=](Search &s)
 	{
 		if (*n != *m) s.fail();
