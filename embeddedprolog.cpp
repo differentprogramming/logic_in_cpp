@@ -2,6 +2,7 @@
 //
 #include "stdafx.h"
 #include <stdexcept>
+#include <utility>
 #include <boost/any.hpp>
 #include <vector>
 #include <boost/regex.hpp>
@@ -182,6 +183,8 @@ inline ostream & operator<<(ostream & os, const LVar &v)
 }
 
 
+
+
 class LCons :public intrusive_ref_counter<LCons, boost::thread_unsafe_counter>
 {
 public:
@@ -212,6 +215,165 @@ class Search;
 //The other times it has to be passed are in direct calls not continuations
 typedef std::function<void(Search &)> Continuation;
 
+template<typename T>
+class CapturedVar;
+
+
+/* CombinableRefCount is a replacement for intrusive_ref_counter<_, boost::thread_unsafe_counter >
+ * With the difference that you can combine a bunches of them to share a reference counter.
+ * The point of that is to handle the case where a bunch of objects create a cycle of references.
+ * Note it is assumed that the organization of this cycle is immutable.
+ * Then by combining the counts, a reference to one object is considered a reference to all for the 
+ * sake of refernce counting.  Only when there are no external links to all of the objects will they
+ * be collected.
+ * Note it is assumed that the cycle of references either is special cased to not cause the counter
+ * to increment, or that all of those increments have been manually decremented out.
+ * The class is hard to understand because CombinableRefCount is used in two separate ways by the
+ * algorithm and it's just punning that the same code works for both.
+ * The main way is that CombinableRefCount is subclassed.  These subclasses can be used just like 
+ * subclasses of boost::intrusive_ref_counter.
+ * However, if combineRefs is called on a list of CombinableRefCount* (or on a list of CapturedVar<T> holding
+ * CapturedVarLetter<T> derived from  CombinableRefCount) then a single CombinableRefCount is allocated
+ * to hold the combined reference count for all those objects.  Note that this CombinableRefCount is 
+ * just the raw type, not a subclass.
+ * For the first kind, the subclassed version, _forward points at the shared count if there is one
+ * and _next makes a list to facilitate deleting the whole set at once.
+ * For the second kind, the shared count, _next points to the head of the list of shared objects
+ * and _forward isn't used.
+ */
+class CombinableRefCount
+{
+
+public:
+	int _ref;
+	CombinableRefCount *_next;//in union head , otherwise next member of union
+	CombinableRefCount *_forward;//in union end of list, otherwise not used
+
+
+	int use_count() const { if (_forward) return _forward->_ref; else return _ref; }
+	void _inc() { if (_forward) ++_forward->_ref; else ++_ref; }
+	CombinableRefCount * _dec() {
+		if (_forward) {
+			if (0 == --_forward->_ref) return _forward;
+		}
+		else {
+			if (0 == --_ref) return this;
+		}
+		return nullptr;
+	}
+	CombinableRefCount() :_ref(0), _next(nullptr), _forward(nullptr)  {}
+	virtual ~CombinableRefCount()
+	{
+		if (_next) delete _next;
+	}
+};
+
+void intrusive_ptr_add_ref(CombinableRefCount *p)
+{
+	p->_inc();
+}
+void intrusive_ptr_release(CombinableRefCount *p)
+{
+	CombinableRefCount * d = p->_dec();
+	if (d) delete d;
+//	delete(p->_dec());
+}
+
+CombinableRefCount * combineRefs()
+{
+	return new CombinableRefCount;
+}
+
+template<typename ... Types>
+CombinableRefCount * combineRefs(CombinableRefCount *first, Types ... rest)
+{
+	CombinableRefCount *u = combineRefs(rest...);
+	first->_forward = u;
+	u->_ref += first->_ref;
+	first->_next = u->_next;
+	u->_next = first;
+	return u;
+}
+
+
+
+template <typename T>
+class CapturedVarLetter :public CombinableRefCount
+{
+public:
+	T value;
+	CapturedVarLetter(const T& a) :value(a) {}
+	CapturedVarLetter() {}
+	T& operator *() { return value; }
+	T* operator ->() { return &value; }
+};
+
+/* CapturedVar has two uses
+ * it can be used inside of lambdas to give the variable capture semantics of other language ie:
+ * 1) variables are captured by reference but
+ * 2) the lifetime of captured variables is controlled by garbage collection - even if the original variable goes out of scope
+ * the variable exists as long as there is a lambda that references it.
+ * 3) note that this garbage collection is not thread safe - I decided that speed is more important, do not share lambdas that hold
+ * CapturedVar across threads
+ *
+ * The other use (for CapturedCont) is to speed up copying std::function objects that would otherwise require copying a heap object
+ * on each copy.  Incrementing and decrementing the refernce counter is faster than calling new and delete.
+ *
+ * Note, there's a bug/complication here.  Lambdas that are held in CapturedConts that form cycles of ownership will never be collected.
+ * In normal programs that would rarely come up, but I'm afraid that in logic style programming it will come up quite often, so
+ * there's a memory leak unless a somewhat complicated fix is used.
+ * The fix is:
+ * Any CapturedCont that's part of a cycle (even a self reference) needs a shadow ptr variable thus:
+ * CapturedContPtr foo_ptr = foo.get();
+ * and inside the lambdas use *foo_ptr everywhere you would have used foo. *foo_ptr can convert to CapturedCont as needed, say to pass
+ * as a parameter.  For the sake of convenience you can also use foo_ptr directly without the * in Search::alt() and Search::tail()
+ * 
+ * For all cycles of more than one CapturedCont you have to call combineRefs on the set like so:
+ * CapturedCont foo,bar,baz;
+ * CapturedContPtr foo_ptr = foo.get(),bar_ptr=bar.get(),baz_ptr=baz.get();
+ * combineRefs(foo,bar,baz);
+ * 
+ * Having done that incantation, the problem of circular references of CapturedConts is solved.
+ */
+
+template<typename T>
+class CapturedVar : public intrusive_ptr< CapturedVarLetter<T> >
+{
+public:
+	CapturedVar(const CapturedVarLetter<T>& v) :intrusive_ptr(&const_cast<CapturedVarLetter<T>&>(v)) 
+	{
+	
+	}
+	CapturedVar(const T& v) :intrusive_ptr(new CapturedVarLetter<T>(v)) {}
+	CapturedVar() :intrusive_ptr(new CapturedVarLetter<T>()) {}
+
+	CapturedVar(const CapturedVar<T> &o) :intrusive_ptr(static_cast<const intrusive_ptr< CapturedVarLetter<T> > &>(o)) {}
+
+	CapturedVarLetter<T> & internal() {
+		return *get();
+	}
+
+	T& operator *() { return get()->value; }
+	T& operator *() const { return get()->value; }
+};
+
+
+typedef CapturedVar<Continuation> CapturedCont;
+typedef CapturedVarLetter<Continuation> *CapturedContPtr;
+
+template<typename T,typename ... Types>
+CombinableRefCount * combineRefs(const CapturedVar<T> &_first, Types ... rest)
+{
+	CombinableRefCount *first = _first.get();
+		CombinableRefCount *u = combineRefs(rest...);
+	first->_forward = u;
+	u->_ref += first->_ref;
+	first->_next = u->_next;
+	u->_next = first;
+	return u;
+}
+
+
 struct clean_stack_exception
 {
 };
@@ -223,56 +385,78 @@ class Search
 	enum AmbTag { AMB_UNDO, AMB_ALT };
 	struct AmbRecord {
 		AmbTag tag;
-		Continuation cont;
+		CapturedCont cont;
 	};
 	std::vector<AmbRecord> amblist;
-	static void fail_fn(Search &s) 
+
+	static const CapturedCont captured_fail;
+
+	static void fail_fn(Search &s)
 	{
 		s.failed = true;
-		s.save_undo(fail_fn);
+		s.save_undo(captured_fail);
 	}
+
 	void new_amblist()
 	{
 		failed = false;
 		started = false;
 		amblist.erase(amblist.begin(), amblist.end());
-		amblist.push_back(AmbRecord{ AMB_UNDO,(Continuation)fail_fn});
+		amblist.push_back(AmbRecord{ AMB_UNDO,captured_fail});
 	}
 	bool started;
 	int stack_saver;
-	Continuation cont;
+	CapturedCont cont;
 	bool failed;
 	//used by friend function fail() ie, lets you use fail as a continuation 
-	Continuation _for_fail()
+	CapturedCont _for_fail()
 	{
-		Continuation c = amblist.back().cont;
+		CapturedCont c = amblist.back().cont;
 		amblist.pop_back();
 		return c;
 	}
 	void start() { tail(initial); }
 public:
-	Continuation initial;
+	CapturedCont initial;
 	std::map<const char *,boost::any> results;
 	friend void fail(Search &s);
 	bool running() { return !failed;  }
-	void save_undo(Continuation c) { amblist.push_back(AmbRecord{AMB_UNDO,c}); }
-	void alt(Continuation c) { amblist.push_back(AmbRecord{ AMB_ALT,c }); }
+	void save_undo(CapturedCont c) { amblist.push_back(AmbRecord{AMB_UNDO,c}); }
+	//save_undo is only called from unify so I don't think we need this conversion
+	void save_undo(CapturedContPtr c) { amblist.push_back(AmbRecord{ AMB_UNDO,CapturedCont(*c) }); }
+	void alt(CapturedCont c) { amblist.push_back(AmbRecord{ AMB_ALT,c }); }
+	void alt(CapturedContPtr c) { amblist.push_back(AmbRecord{ AMB_ALT,CapturedCont(*c) }); }
 
-	void tail(Continuation c) 
+	void tail(CapturedCont c)
 	{
 		if (--stack_saver < 1) {
 			cont = c;
-//			cout << "throwing!" << endl;
+			throw(clean_stack_exception());
+		}
+		(*c)(*this);
+	}
+	void tail(Continuation c)
+	{
+		if (--stack_saver < 1) {
+			cont = c;
 			throw(clean_stack_exception());
 		}
 		c(*this);
 	}
+	void tail(CapturedContPtr c)
+	{
+		if (--stack_saver < 1) {
+			cont = *c;
+			throw(clean_stack_exception());
+		}
+		(c->value)(*this);
 
+	}
 	//Note this can throw a clean_stack_exception so only call in tail position
 	//you can use the fail() function defined below the class as a continuation
 	//instead
 	void fail() {
-		Continuation c = amblist.back().cont;
+		CapturedCont c = amblist.back().cont;
 		amblist.pop_back();
 		tail(c); //tail call
 	}
@@ -306,29 +490,23 @@ public:
 		bool retry = false;
 		stack_saver = STACK_SAVER_DEPTH;
 		try {
-//			cout << "try!" << endl;
 			if (!started) {
 				started = true;
 				failed = false;
 				start();
 			}
 			else fail();
-//			cout << "end try!" << endl;
 		}
 		catch (clean_stack_exception &) {
-//			cout << "caught!" << endl;
 			stack_saver = STACK_SAVER_DEPTH;
 			retry = true;
 		}
 		while (retry) {
 			retry = false;
 			try {
-//				cout << "try!" << endl;
-				cont(*this);
-//				cout << "end try!" << endl;
+				(*cont)(*this);
 			}
 			catch (clean_stack_exception &) {
-//				cout << "caught!" << endl;
 				stack_saver = STACK_SAVER_DEPTH;
 				retry = true;
 			}
@@ -342,38 +520,19 @@ void fail(Search &s)
 	s.tail(s._for_fail());
 }
 
+const CapturedCont Search::captured_fail = (Continuation)fail_fn;
 
-template <typename T>
-class CapturedVarLetter :public intrusive_ref_counter<CapturedVarLetter<T>, boost::thread_unsafe_counter >
-{
-public:
-	T value;
-	CapturedVarLetter(const T& a) :value(a) {}
-	CapturedVarLetter() {}
-};
-
-template<typename T>
-class CapturedVar : public intrusive_ptr< CapturedVarLetter<T> >
-{
-public:
-	CapturedVar(const T& v) :intrusive_ptr(new CapturedVarLetter<T>(v)) {}
-	CapturedVar() :intrusive_ptr(new CapturedVarLetter<T>()) {}
-
-	CapturedVar(const CapturedVar<T> &o):intrusive_ptr(static_cast<const intrusive_ptr< CapturedVarLetter<T> > &>(o)) {}
-
-	T& operator *() { return (*static_cast<intrusive_ptr< CapturedVarLetter<T> >* >(this))->value; }
-	T& operator *() const { return (*static_cast<const intrusive_ptr< CapturedVarLetter<T> > *>(this))->value; }
-};
-
-typedef CapturedVar<Continuation> CapturedCont;
 
 //oops, the return value could be nixed by stack clean exception
 //but it worked when I made it always throw... {}{}{} WHY DOES IT WORK?
 //OH it works because it doesn't use the search until AFTER it returns the value
-Continuation stream1(CapturedVar<int> m, CapturedCont c)
+CapturedCont stream1(CapturedVar<int> m, CapturedCont c)
 {
 	CapturedVar<int> n(0);
 	CapturedCont rest;
+	CapturedContPtr rest_ptr = rest.get();
+
+
 	*rest = [=](Search &s)
 	{ 
 		*n = *n + 1;
@@ -381,21 +540,23 @@ Continuation stream1(CapturedVar<int> m, CapturedCont c)
 			s.fail();
 		}
 		else {
-			s.alt(*rest);
+			s.alt(rest_ptr);
 //			cout << "n is " << *n << endl;
 			*m = *n;
-			s.tail(*c);
+			s.tail(c);
 		}
 	};
-	return *rest;
+	cout << rest->use_count() << endl;
+	return rest;
 }
 
 
 //Note it's probably cheaper to pass a CapturedCont than a Continuation
-Continuation stream2(CapturedVar<int> m, CapturedCont c)
+CapturedCont stream2(CapturedVar<int> m, CapturedCont c)
 {
 	CapturedVar<int> n(0);
 	CapturedCont rest;
+	CapturedContPtr rest_ptr = rest.get();
 
 	*rest = [=](Search &s)
 	{
@@ -404,19 +565,20 @@ Continuation stream2(CapturedVar<int> m, CapturedCont c)
 			s.fail();
 		}
 		else {
-			s.alt(*rest);
+			s.alt(rest_ptr);
 //			cout << "m is " << *n * *n << endl;
 			*m = *n * *n;
-			s.tail(*c);
+			s.tail(c);
 		}
 	};
-	return *rest;
+	return rest;
 }
 
 void AmbTest(Search &s)
 {
 	CapturedVar<int> n, m;
 	CapturedCont c1, c2, c3;
+	combineRefs(c1, c2, c3);
 	//note it can't safely use Search inside of functions that return a value
 	*c1 = [=](Search &s) { s.tail(stream1(n,c2)); };
 	*c2 = [=](Search &s) { s.tail(stream2(m,c3)); };
@@ -428,7 +590,10 @@ void AmbTest(Search &s)
 			s.results.insert_or_assign("m", *m);
 		}
 	};
-	s.tail(*c1);
+	cout << c1->use_count() << endl;
+	cout << c2->use_count() << endl;
+	cout << c3->use_count() << endl;
+	s.tail(c1);
 }
 
 #define OUT_OS_TYPE(TYPE) if (v.type() == typeid(TYPE)) { os << boost::any_cast<TYPE>(v); } else
