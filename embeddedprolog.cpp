@@ -99,6 +99,7 @@ public:
 	//copy constructor, not chaining
 	LVar(const LVar &v);
 	LVar(LogicalVariant *v);
+	LVar(LValue v);
 	LVar(InternedString s);
 	LVar(LCons *);
 	LVar(intrusive_ptr<LCons>&);
@@ -129,6 +130,7 @@ public:
 
 inline LVar::LVar() : intrusive_ptr<LogicalVariant>(new LogicalVariant(UNINSTANCIATED)) { }
 inline LVar::LVar(NilType) : intrusive_ptr<LogicalVariant>(new LogicalVariant(NIL)) { }
+inline LVar::LVar(LValue v) : intrusive_ptr<LogicalVariant>(new LogicalVariant(v)) { }
 inline LVar::LVar(UninstanciatedType) : intrusive_ptr<LogicalVariant>(new LogicalVariant(UNINSTANCIATED)) { }
 inline LVar::LVar(char * const c): intrusive_ptr<LogicalVariant>(new LogicalVariant(InternedString(c))){}
 inline LVar::LVar(double d): intrusive_ptr<LogicalVariant>(new LogicalVariant(d)){}
@@ -185,10 +187,19 @@ inline ostream & operator<<(ostream & os, const LVar &v)
 
 
 
+struct DotHolder
+{
+	LValue cdr;
+};
+
 class LCons :public intrusive_ref_counter<LCons, boost::thread_unsafe_counter>
 {
 public:
+	//allocating a new LogicalVariant for NIL allows the cons to be mutable
+	//Maybe we'd prefer immutable
 	LCons(LValue first):car(new LogicalVariant(first)), cdr(new LogicalVariant(NIL)) {}
+	LCons(LValue first, LValue rest) :car(new LogicalVariant(first)), cdr(new LogicalVariant(rest)) {}
+	LCons(LValue first, DotHolder rest) :car(new LogicalVariant(first)), cdr(new LogicalVariant(rest.cdr)) {}
 	LCons(LValue first, LValue rest) :car(new LogicalVariant(first)), cdr(new LogicalVariant(rest)) {}
 	LCons(LVar& first) :car(first), cdr(new LogicalVariant(NIL)) {}
 	LCons(LVar& first, LVar& rest) :car(first), cdr(rest) {}
@@ -205,6 +216,27 @@ inline LVar::LVar(LCons *c):intrusive_ptr<LogicalVariant>(new LogicalVariant(c))
 inline LVar::LVar(intrusive_ptr<LCons> &c):intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
 
 typedef std::vector<boost::any> AnyValues;
+
+enum DotType { DOT };
+LogicalVariant NilVariant(NIL);
+template<typename T,typename ... TYPES>
+LValue L()
+{
+	return NIL; 
+}
+
+template<typename T, typename ... TYPES>
+LValue L(T &a, TYPES ... rest)
+{
+	return LValue(new LCons(a, L(rest)));
+}
+
+template<typename ... TYPES>
+DotHolder L(DotType, TYPES ... rest)
+{
+	return DotHolder{ L(rest) };
+}
+
 
 //Much to my surprise Search in C++ is only 1/3 more lines than the lua version. 
 class Search;
