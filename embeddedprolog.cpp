@@ -94,7 +94,7 @@ public:
 	LVar();
 	LVar(NilType);
 	LVar(UninstanciatedType);
-	LVar(char * const c);
+	LVar(const char * c);
 	LVar(double d);
 	//copy constructor, not chaining
 	LVar(const LVar &v);
@@ -104,8 +104,32 @@ public:
 	LVar(LCons *);
 	LVar(intrusive_ptr<LCons>&);
 	void chain(LVar&o);
-	LValue& get_target();
+	LVar& get_target();
+	LVType target_type();
+	bool nullp() { return target_type() == LV_NIL; }
+	bool listp() { LVType t = target_type(); return t == LV_NIL || t==LV_LIST; }
+	bool pairp() { return target_type() == LV_LIST; }
+
+//	LV_NIL,LV_UNINSTANCIATED,LV_DOUBLE,LV_STRING,LV_LVAR,LV_LIST,LV_CUSTOM,LV_DATA1,LV_DATA2,LV_DATA3,LV_DATA4
+	LVType type() const;
+	bool uninstanciatedp() { return type() == LV_UNINSTANCIATED; }
+	bool doublep() { return type() == LV_DOUBLE; }
+	bool stringp() { return type() == LV_STRING; }
+	bool lvarp() { return type() == LV_LVAR; }
+
+	bool ground()  { 
+		LVType t = type();
+		if (t == LV_LIST) return car().ground() && cdr().ground();
+		return t != LV_UNINSTANCIATED; 
+	}
+	intrusive_ptr<LCons> as_LCons();
+	double as_double();
+	InternedString as_IString();
+	intrusive_ptr<LogicalData> as_LogicalValue();
+	LVar car();
+	LVar cdr();
 };
+
 
 
 class LogicalVariant:public intrusive_ref_counter<LogicalVariant, boost::thread_unsafe_counter>
@@ -119,26 +143,26 @@ public:
 	LogicalVariant(boost::intrusive_ptr<LCons>&c) :value(c) {}
 
 	LValue value;
-	LVType type() const 
-	{
-		LVType t = (LVType)value.which(); 
-		if (t == LV_CUSTOM) return boost::get<intrusive_ptr<LogicalData>&>(value)->class_type;
-		return t;
-	}
-	bool ground() const { return type() != LV_UNINSTANCIATED; }
 };
 
 inline LVar::LVar() : intrusive_ptr<LogicalVariant>(new LogicalVariant(UNINSTANCIATED)) { }
 inline LVar::LVar(NilType) : intrusive_ptr<LogicalVariant>(new LogicalVariant(NIL)) { }
 inline LVar::LVar(LValue v) : intrusive_ptr<LogicalVariant>(new LogicalVariant(v)) { }
 inline LVar::LVar(UninstanciatedType) : intrusive_ptr<LogicalVariant>(new LogicalVariant(UNINSTANCIATED)) { }
-inline LVar::LVar(char * const c): intrusive_ptr<LogicalVariant>(new LogicalVariant(InternedString(c))){}
+inline LVar::LVar(const char * c): intrusive_ptr<LogicalVariant>(new LogicalVariant(InternedString(c))){}
 inline LVar::LVar(double d): intrusive_ptr<LogicalVariant>(new LogicalVariant(d)){}
 //Note it's not safe to make this chain because it's used as a copy constructor
 inline LVar::LVar(const LVar &v) : intrusive_ptr<LogicalVariant>(v) {}
 inline LVar::LVar(LogicalVariant *v) :intrusive_ptr<LogicalVariant>(v) {}
 inline LVar::LVar(InternedString s) : intrusive_ptr<LogicalVariant>(new LogicalVariant(s)) {}
 inline void LVar::chain(LVar &o) { (*this)->value = o; }
+inline LVType LVar::target_type() { return get_target().type(); }
+LVType LVar::type() const
+{
+	LVType t = (LVType)(*this)->value.which();
+	if (t == LV_CUSTOM) return boost::get<intrusive_ptr<LogicalData>&>((*this)->value)->class_type;
+	return t;
+}
 
 
 struct GetAddress : public boost::static_visitor<>
@@ -148,64 +172,66 @@ struct GetAddress : public boost::static_visitor<>
 	void operator()(T &t) const { address = &t; }
 };
 
-
-LValue& LVar::get_target()
+;
+LVar& LVar::get_target()
 {
 	LVar *t = this;
-	GetAddress get_address;
-	while ((*t)->type() == LV_LVAR) t = &boost::get<LVar>((*t)->value);
-	return (*t)->value;
+//	GetAddress get_address;
+	while ((*t).type() == LV_LVAR) t = &boost::get<LVar>((*t)->value);
+	return *t;
 }
-
-inline ostream & operator<<(ostream & os, const LogicalVariant &v)
-{
-	switch (v.type()) {
-	case LV_UNINSTANCIATED:
-		os << "Var" << &v;
-		break;
-	case LV_LVAR:
-		os <<"->("<< &v.value <<')'<<v.value;
-		break;
-	default:
-		os << "[" << &v.value << ']' << v.value;
-	}
-	return os;
-}
-
 
 inline LogicalVariant * LInit()
 {
 	return new LogicalVariant();
 }
 
-inline ostream & operator<<(ostream & os, const LVar &v)
-{
-	os << *v;
-	return os;
-}
-
+//ostream & operator<<(ostream & os, const LogicalVariant &v);
+ostream & operator<<(ostream & os, const LVar &v);
 
 
 
 struct DotHolder
 {
-	LValue cdr;
+	LVar cdr;
 };
 
 class LCons :public intrusive_ref_counter<LCons, boost::thread_unsafe_counter>
 {
+
 public:
+	static const char *open_paren; 
+	static const char *close_paren;
+	static const char *display_dot;
+	static const char *display_nil;
+	ostream & _out_rest(ostream & os)
+	{
+/*
+if (nullp(logical_get(self[2]))) then return ' ' .. tostring(logical_get(self[1])) .. close_paren
+elseif (listp(logical_get(self[2]))) then return ' ' .. tostring(logical_get(self[1])) .. logical_get(self[2]):rest_tostring()
+else return ' ' .. tostring(logical_get(self[1])) .. display_dot .. tostring(self[2]) ..close_paren
+end
+*/
+		if (cdr.nullp()) os << " " << car.get_target() << close_paren;
+		else if (cdr.listp()) {
+			os << " "
+				<< car.get_target();
+			return cdr.as_LCons()->_out_rest(os);
+		}
+		else os << " " << car.get_target() << display_dot << cdr.get_target() << close_paren;
+		return os;
+	}
 	//allocating a new LogicalVariant for NIL allows the cons to be mutable
 	//Maybe we'd prefer immutable
 	LCons(LValue first):car(new LogicalVariant(first)), cdr(new LogicalVariant(NIL)) {}
 	LCons(LValue first, LValue rest) :car(new LogicalVariant(first)), cdr(new LogicalVariant(rest)) {}
-	LCons(LValue first, DotHolder rest) :car(new LogicalVariant(first)), cdr(new LogicalVariant(rest.cdr)) {}
-	LCons(LValue first, LValue rest) :car(new LogicalVariant(first)), cdr(new LogicalVariant(rest)) {}
+	//LCons(LVar& first, DotHolder rest) :car(first), cdr(rest.cdr) {}
+	LCons(LVar && first, DotHolder && rest) :car(first), cdr(rest.cdr.car()) {}
 	LCons(LVar& first) :car(first), cdr(new LogicalVariant(NIL)) {}
 	LCons(LVar& first, LVar& rest) :car(first), cdr(rest) {}
 	LCons(LValue first, LVar& rest) :car(new LogicalVariant(first)), cdr(rest) {}
 	LCons(LVar& first, LValue rest) :car(first), cdr(new LogicalVariant(rest)) {}
-
+	
 	//Note there is an extra level of indirection here so that there doesn't have to be
 	//some complicated plumbing for the garbage collection.  And remember LVars should never be NULL
 	LVar car;
@@ -213,30 +239,89 @@ public:
 };
 
 inline LVar::LVar(LCons *c):intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
-inline LVar::LVar(intrusive_ptr<LCons> &c):intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
+inline LVar::LVar(intrusive_ptr<LCons> &c) :intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
+intrusive_ptr<LCons> LVar::as_LCons() {
+	return boost::get<intrusive_ptr<LCons> >(get_target()->value);
+}
+double LVar::as_double() {
+	return boost::get<double>(get_target()->value);
+}
+InternedString LVar::as_IString() {
+	return boost::get<InternedString>(get_target()->value);
+}
+intrusive_ptr<LogicalData> LVar::as_LogicalValue() {
+	return boost::get<intrusive_ptr<LogicalData> >(get_target()->value);
+}
+LVar LVar::car() { return as_LCons()->car.get_target(); }
+LVar LVar::cdr() { return as_LCons()->cdr.get_target(); }
+
+const char *LCons::open_paren = "( ";
+const char *LCons::close_paren = " )";
+const char *LCons::display_dot = " | ";
+const char *LCons::display_nil = "()";
+
+ostream & operator<<(ostream & os, const LVar &v)
+//ostream & operator<<(ostream & os, const LogicalVariant &v)
+{
+	switch (v.type()) {
+	case LV_UNINSTANCIATED:
+		os << "Var" << &v;
+		break;
+	case LV_LVAR:
+		os << "->(" << &v->value << ')' << v->value;
+		break;
+	case LV_NIL:
+		os << LCons::display_nil;
+		break;
+	case LV_LIST:
+		//boost::get<intrusive_ptr<LCons> >(cdr.get_target()->value)->_out_rest(os);
+		/*
+		__tostring=function (self)
+		if nullp(self) then return display_nil
+		elseif nullp(logical_get(self[2])) then return open_paren .. tostring(logical_get(self[1])) .. close_paren
+		elseif listp(logical_get(self[2])) then return open_paren .. tostring(logical_get(self[1])) .. logical_get(self[2]):rest_tostring()
+		else return open_paren .. tostring(logical_get(self[1])) .. display_dot .. tostring(self[2]) ..close_paren
+		end
+		end
+		*/
+	{
+		intrusive_ptr<LCons> l = boost::get<intrusive_ptr<LCons> >(v->value);
+		if (l->cdr.nullp()) os << LCons::open_paren << l->car.get_target() << LCons::close_paren;
+		else if (l->cdr.listp()) {
+			os << LCons::open_paren << l->car.get_target();
+			return boost::get<intrusive_ptr<LCons> >(l->cdr.get_target()->value)->_out_rest(os);
+		}
+		else os << LCons::open_paren << l->car.get_target() << LCons::display_dot << l->cdr.get_target() << LCons::close_paren;
+	}
+	break;
+	default:
+		os << "[" << &v->value << ']' << v->value;
+	}
+	return os;
+}
+
 
 typedef std::vector<boost::any> AnyValues;
 
 enum DotType { DOT };
 LogicalVariant NilVariant(NIL);
-template<typename T,typename ... TYPES>
-LValue L()
+template<typename ... TYPES>
+LVar L()
 {
 	return NIL; 
 }
 
 template<typename T, typename ... TYPES>
-LValue L(T &a, TYPES ... rest)
+LVar L(T a, TYPES ... rest)
 {
-	return LValue(new LCons(a, L(rest)));
+	return LVar(intrusive_ptr<LCons>(new LCons(LVar(a), L(rest ...))));
 }
 
 template<typename ... TYPES>
 DotHolder L(DotType, TYPES ... rest)
 {
-	return DotHolder{ L(rest) };
+	return DotHolder{ L(rest ...) };
 }
-
 
 //Much to my surprise Search in C++ is only 1/3 more lines than the lua version. 
 class Search;
@@ -264,7 +349,7 @@ class CapturedVar;
  * algorithm and it's just punning that the same code works for both.
  * The main way is that CombinableRefCount is subclassed.  These subclasses can be used just like 
  * subclasses of boost::intrusive_ref_counter.
- * However, if combineRefs is called on a list of CombinableRefCount* (or on a list of CapturedVar<T> holding
+ * However, if combine_refs is called on a list of CombinableRefCount* (or on a list of CapturedVar<T> holding
  * CapturedVarLetter<T> derived from  CombinableRefCount) then a single CombinableRefCount is allocated
  * to hold the combined reference count for all those objects.  Note that this CombinableRefCount is 
  * just the raw type, not a subclass.
@@ -311,15 +396,15 @@ void intrusive_ptr_release(CombinableRefCount *p)
 //	delete(p->_dec());
 }
 
-CombinableRefCount * combineRefs()
+CombinableRefCount * combine_refs()
 {
 	return new CombinableRefCount;
 }
 
 template<typename ... Types>
-CombinableRefCount * combineRefs(CombinableRefCount *first, Types ... rest)
+CombinableRefCount * combine_refs(CombinableRefCount *first, Types ... rest)
 {
-	CombinableRefCount *u = combineRefs(rest...);
+	CombinableRefCount *u = combine_refs(rest...);
 	first->_forward = u;
 	u->_ref += first->_ref;
 	first->_next = u->_next;
@@ -367,14 +452,14 @@ public:
  * and inside the lambdas use foo_uncounted everywhere you would have used foo. foo_uncounted can convert to CapturedCont as needed, say to pass
  * as a parameter.  
  * 
- * For all cycles of more than one CapturedCont you have to call combineRefs on the set like so:
+ * For all cycles of more than one CapturedCont you have to call combine_refs on the set like so:
  * CapturedCont foo,bar,baz;
  * UncountedCont foo_uncounted = foo,bar_uncounted=bar,baz_uncounted=baz;
- * combineRefs(foo,bar,baz);
+ * combine_refs(foo,bar,baz);
  * and inside of the lambdas that foo,bar and baz are set to use foo_uncounted, bar_uncounted and baz_uncounted instead of foo,bar&baz
  * Having done that incantation, the problem of circular references of CapturedConts is solved.
  *
- * What combineRefs does combine the reference count of the objects it refers to so that for the sake of garbage collection the
+ * What combine_refs does combine the reference count of the objects it refers to so that for the sake of garbage collection the
  * whole set is managed as a single object. A reference to one is a reference to all.
  */
 
@@ -424,10 +509,10 @@ CapturedVar<T>::CapturedVar(const UncountedVar<T> &o) :intrusive_ptr(o.value) {}
 
 
 template<typename T,typename ... Types>
-CombinableRefCount * combineRefs(const CapturedVar<T> &_first, Types ... rest)
+CombinableRefCount * combine_refs(const CapturedVar<T> &_first, Types ... rest)
 {
 	CombinableRefCount *first = _first.get();
-	CombinableRefCount *u = combineRefs(rest...);
+	CombinableRefCount *u = combine_refs(rest...);
 	first->_forward = u;
 	u->_ref += first->_ref;
 	first->_next = u->_next;
@@ -436,7 +521,7 @@ CombinableRefCount * combineRefs(const CapturedVar<T> &_first, Types ... rest)
 }
 
 
-struct clean_stack_exception
+struct CleanStackException
 {
 };
 
@@ -494,7 +579,7 @@ public:
 	{
 		if (--stack_saver < 1) {
 			cont = c;
-			throw(clean_stack_exception());
+			throw(CleanStackException());
 		}
 		(*c)(*this);
 	}
@@ -502,7 +587,7 @@ public:
 	{
 		if (--stack_saver < 1) {
 			cont = c;
-			throw(clean_stack_exception());
+			throw(CleanStackException());
 		}
 		c(*this);
 	}
@@ -510,13 +595,13 @@ public:
 	{
 		if (--stack_saver < 1) {
 			cont = *c;
-			throw(clean_stack_exception());
+			throw(CleanStackException());
 		}
 		(c->value)(*this);
 
 	}
 
-	//Note this can throw a clean_stack_exception so only call in tail position
+	//Note this can throw a CleanStackException so only call in tail position
 	//you can use the fail() function defined below the class as a continuation
 	//instead
 	void fail() {
@@ -561,7 +646,7 @@ public:
 			}
 			else fail();
 		}
-		catch (clean_stack_exception &) {
+		catch (CleanStackException &) {
 			stack_saver = STACK_SAVER_DEPTH;
 			retry = true;
 		}
@@ -570,7 +655,7 @@ public:
 			try {
 				(*cont)(*this);
 			}
-			catch (clean_stack_exception &) {
+			catch (CleanStackException &) {
 				stack_saver = STACK_SAVER_DEPTH;
 				retry = true;
 			}
@@ -645,7 +730,7 @@ void AmbTest(Search &s)
 	CapturedVar<int> n, m;
 	CapturedCont c1, c2, c3;
 	UncountedCont c1_u = c1, c2_u = c2, c3_u = c3;
-	combineRefs(c1, c2, c3);
+	combine_refs(c1, c2, c3);
 
 	//note it can't safely use Search inside of functions that return a value
 	*c1 = [=](Search &s) { s.tail(stream1(n,c2_u)); };
@@ -697,8 +782,10 @@ int main()
 	std::cout << (LValue(InternedString("Hello")) == LValue(InternedString(Hello))) << std::endl;
 	std::cout << (LValue(InternedString("Hello")) == LValue(55)) << std::endl;
 	std::cout << (LValue(55) == LValue(55)) << std::endl;
-	std::cout << TypeNames[D->type()] << std::endl;
+	std::cout << TypeNames[D.type()] << std::endl;
 	std::cout << A <<' '<< B << ' ' << C << ' ' << D<<' '<<E<<' '<<F<<' '<<&F.get_target() << std::endl;
+	LVar M = L(1, DOT, 2);
+	std::cout << L("hello", 1, "Laurie") << L(1, L(2, 3), 4) << M << std::endl;
 
 	Search s(AmbTest);
 	while (s()) {
