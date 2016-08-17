@@ -17,7 +17,6 @@
 #include <map>
 #include <stdint.h>
 
-
 using std::ostream;
 using std::cout;
 using std::endl;
@@ -60,6 +59,41 @@ typedef std::function<void(Search&, Params)> TailWithParams;
 template<typename T>
 class CapturedVar;
 
+#ifdef OWN_MEMORY_MANAGEMENT
+struct FreeList
+{
+	FreeList * next;
+};
+const int FREE_LIST_BLOCK_SIZE = 32768;
+template<typename T> void *allocate_from_freelist()
+{
+	if (T::free_list == nullptr) {
+		void *block = malloc(FREE_LIST_BLOCK_SIZE);
+		intptr_t align;
+		if (T::blocksize > 16) align = 16;
+		else align = T::blocksize;
+		intptr_t offset = ((reinterpret_cast<intptr_t>(block) + align - 1)& ~(align - 1)) - reinterpret_cast<intptr_t>(block);
+		FreeList* p = nullptr;
+		for (intptr_t i = offset;i <= FREE_LIST_BLOCK_SIZE - T::blocksize; i += T::blocksize) {
+			FreeList* const f = reinterpret_cast<FreeList *>(i + reinterpret_cast<intptr_t>(block));
+			f->next = p;
+			p = f;
+		}
+		T::free_list = p;
+	}
+	FreeList* r = T::free_list;
+	T::free_list = r->next;
+	return static_cast<void *>(r);
+}
+template <typename T>
+void free_to_freelist(void *v)
+{
+	if (v == nullptr) return;
+	FreeList* r = static_cast<FreeList*>(v);
+	r->next = T::free_list;
+	T::free_list = r;
+}
+#endif
 
 /* CombinableRefCount is a replacement for intrusive_ref_counter<_, boost::thread_unsafe_counter >
 * With the difference that you can combine a bunches of them to share a reference counter.
@@ -124,7 +158,31 @@ public:
 
 
 	}
+#ifdef OWN_MEMORY_MANAGEMENT
+	static intptr_t blocksize;
+	static FreeList *free_list;
+	void * operator new (size_t size)
+	{
+		assert(size == sizeof(CombinableRefCount));
+		return allocate_from_freelist<CombinableRefCount>();
+	}
+	void * operator new (size_t, void *place)
+	{
+		return place;
+	}
+	void operator delete (void *, void *){}
+
+		void operator delete (void * mem)
+	{
+		free_to_freelist<CombinableRefCount>(mem);
+	}
+#endif
 };
+
+#ifdef OWN_MEMORY_MANAGEMENT
+intptr_t CombinableRefCount::blocksize = intptr_t((sizeof(CombinableRefCount) + sizeof(CombinableRefCount) - 1)&~((sizeof(CombinableRefCount) + sizeof(CombinableRefCount) - 1) >> 1));
+FreeList *CombinableRefCount::free_list = nullptr;
+#endif
 
 void intrusive_ptr_add_ref(CombinableRefCount *p)
 {
@@ -164,8 +222,33 @@ public:
 	CapturedVarLetter() {}
 	T& operator *() { return value; }
 	T* operator ->() { return &value; }
+#ifdef OWN_MEMORY_MANAGEMENT
+	static intptr_t blocksize;
+	static FreeList *free_list;
+	void * operator new (size_t size)
+	{
+		assert(size == sizeof(CapturedVarLetter<T>));
+		return allocate_from_freelist<CapturedVarLetter<T>>();
+	}
+	void * operator new (size_t, void *place)
+	{
+		return place;
+	}
+	void operator delete (void *, void *) {}
+
+	void operator delete (void * mem)
+	{
+		free_to_freelist<CapturedVarLetter<T>>(mem);
+	}
+#endif
 };
 
+#ifdef OWN_MEMORY_MANAGEMENT
+template <typename T>
+intptr_t CapturedVarLetter<T>::blocksize = intptr_t((sizeof(CapturedVarLetter<T>) + sizeof(CapturedVarLetter<T>) - 1)&~((sizeof(CapturedVarLetter<T>) + sizeof(CapturedVarLetter<T>) - 1) >> 1));
+template <typename T>
+FreeList *CapturedVarLetter<T>::free_list = nullptr;
+#endif
 /* CapturedVar has two uses
 * it can be used inside of lambdas to give the variable capture semantics of other language ie:
 * 1) variables are captured by reference but
@@ -234,6 +317,8 @@ public:
 		*static_cast<intrusive_ptr< CapturedVarLetter<T> > *>(this) = nullptr;
 	}
 
+	T * operator->() { return &get()->value; }
+	T * operator->() const { return &get()->value; }
 	T& operator *() { return get()->value; }
 	T& operator *() const { return get()->value; }
 };
@@ -254,12 +339,12 @@ public:
 	template<typename U>
 	UncountedVar(CombineRefType, const UncountedVar<U> &c) :value(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
 
-	CapturedVarLetter<T> * operator->() const { return value; }
-
 	CapturedVarLetter<T> * get() const {
 		return const_cast<CapturedVarLetter<T> *>(value);
 	}
 
+	T * operator->() { return &get()->value; }
+	T * operator->() const { return &get()->value; }
 	T& operator *() { return value->value; }
 	T& operator *() const { return const_cast<T&>(value->value); }
 
@@ -372,12 +457,32 @@ public:
 	intrusive_ptr<LogicalData> as_LogicalValue();
 	LVar car();
 	LVar cdr();
-	CapturedCont unify(LVar &other, CapturedCont c);
-	CapturedCont identical(LVar &other, CapturedCont c);
-	CapturedCont not_identical(LVar &other, CapturedCont c);
 //	bool operator ==(LVar &);
+#ifdef OWN_MEMORY_MANAGEMENT
+	static intptr_t blocksize;
+	static FreeList *free_list;
+	void * operator new (size_t size)
+	{
+		assert(size == sizeof(LVar));
+		return allocate_from_freelist<LVar>();
+	}
+	void * operator new (size_t , void *place)
+	{
+		return place;
+	}
+	void operator delete (void *, void *) {}
+
+	void operator delete (void * mem)
+	{
+		free_to_freelist<LVar>(mem);
+	}
+#endif
 };
 
+#ifdef OWN_MEMORY_MANAGEMENT
+intptr_t LVar::blocksize = intptr_t((sizeof(LVar) + sizeof(LVar) - 1)&~((sizeof(LVar) + sizeof(LVar) - 1) >> 1));
+FreeList *LVar::free_list = nullptr;
+#endif
 
 
 class LogicalVariant:public intrusive_ref_counter<LogicalVariant, boost::thread_unsafe_counter>
@@ -391,7 +496,30 @@ public:
 	LogicalVariant(boost::intrusive_ptr<LCons>&c) :value(c) {}
 
 	LValue value;
+#ifdef OWN_MEMORY_MANAGEMENT
+	static intptr_t blocksize;
+	static FreeList *free_list;
+	void * operator new (size_t size)
+	{
+		assert(size == sizeof(LogicalVariant));
+		return allocate_from_freelist<LogicalVariant>();
+	}
+	void * operator new (size_t, void *place)
+	{
+		return place;
+	}
+	void operator delete (void *, void *) {}
+	void operator delete (void * mem)
+	{
+		free_to_freelist<LogicalVariant>(mem);
+	}
+#endif
 };
+
+#ifdef OWN_MEMORY_MANAGEMENT
+intptr_t LogicalVariant::blocksize = intptr_t((sizeof(LogicalVariant) + sizeof(LogicalVariant) - 1)&~((sizeof(LogicalVariant) + sizeof(LogicalVariant) - 1) >> 1));
+FreeList *LogicalVariant::free_list = nullptr;
+#endif
 
 inline LVar::LVar() : intrusive_ptr<LogicalVariant>(new LogicalVariant(UNINSTANCIATED)) { }
 inline LVar::LVar(NilType) : intrusive_ptr<LogicalVariant>(new LogicalVariant(NIL)) { }
@@ -437,6 +565,8 @@ inline LogicalVariant * LInit()
 //ostream & operator<<(ostream & os, const LogicalVariant &v);
 ostream & operator<<(ostream & os, const LVar &v);
 
+typedef CapturedVar<LVar> CLVar;
+typedef UncountedVar<LVar> ULVar;
 
 
 struct DotHolder
@@ -484,7 +614,31 @@ end
 	//some complicated plumbing for the garbage collection.  And remember LVars should never be NULL
 	LVar car;
 	LVar cdr;
+#ifdef OWN_MEMORY_MANAGEMENT
+	static intptr_t blocksize;
+	static FreeList *free_list;
+	void * operator new (size_t size)
+	{
+		assert(size == sizeof(LCons));
+		return allocate_from_freelist<LCons>();
+	}
+	void * operator new (size_t, void *place)
+	{
+		return place;
+	}
+	void operator delete (void *, void *) {}
+
+	void operator delete (void * mem)
+	{
+		free_to_freelist<LCons>(mem);
+	}
+#endif
 };
+
+#ifdef OWN_MEMORY_MANAGEMENT
+intptr_t LCons::blocksize = intptr_t((sizeof(LCons) + sizeof(LCons) - 1)&~((sizeof(LCons) + sizeof(LCons) - 1) >> 1));
+FreeList *LCons::free_list = nullptr;
+#endif
 
 inline LVar::LVar(LCons *c):intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
 inline LVar::LVar(intrusive_ptr<LCons> &c) :intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
@@ -508,6 +662,7 @@ const char *LCons::close_paren = " )";
 const char *LCons::display_dot = " | ";
 const char *LCons::display_nil = "()";
 
+
 ostream & operator<<(ostream & os, const LVar &v)
 //ostream & operator<<(ostream & os, const LogicalVariant &v)
 {
@@ -516,7 +671,11 @@ ostream & operator<<(ostream & os, const LVar &v)
 		os << "Var" << &v;
 		break;
 	case LV_LVAR:
+#ifdef DISPLAY_LVAR_LINKS
 		os << "->(" << &v->value << ')' << v->value;
+#else
+		os << v->value;
+#endif
 		break;
 	case LV_NIL:
 		os << LCons::display_nil;
@@ -543,7 +702,11 @@ ostream & operator<<(ostream & os, const LVar &v)
 	}
 	break;
 	default:
+#ifdef DISPLAY_LVAR_LINKS
 		os << "[" << &v->value << ']' << v->value;
+#else
+		os << v->value;
+#endif
 	}
 	return os;
 }
@@ -627,6 +790,8 @@ struct CleanStackExceptionWParams
 
 const int STACK_SAVER_DEPTH = 30;
 
+bool _unify(Search &s, LVar &a, LVar&b);
+bool _identical(LVar &a, LVar&b);
 
 class Search
 {
@@ -634,6 +799,11 @@ class Search
 	struct AmbRecord {
 		AmbTag tag;
 		CapturedCont cont;
+		CapturedTailWParams twp;
+		int params;
+		AmbRecord(AmbTag t, CapturedCont c) :tag(t), cont(c), twp(nullptr), params(0) {}
+		AmbRecord(AmbTag t, int n, CapturedTailWParams c) :tag(t), cont(nullptr), twp(c), params(n) {}
+
 	};
 	std::vector<AmbRecord> amblist;
 
@@ -649,8 +819,9 @@ class Search
 	{
 		failed = false;
 		started = false;
-		amblist.erase(amblist.begin(), amblist.end());
-		amblist.push_back(AmbRecord{ AMB_UNDO,captured_fail});
+		params.clear();
+		amblist.clear();
+		amblist.push_back(AmbRecord( AMB_UNDO,captured_fail));
 	}
 	bool started;
 	int stack_saver;
@@ -666,7 +837,7 @@ class Search
 	}
 	void start() 
 	{ 
-		if (initial_params.size() != 0) apply_params(initial_with_params, initial_params);
+		if (initial_params.size() != 0) apply_params(initial_with_params, (int)initial_params.size(),initial_params,false);
 		else tail(initial); 
 	}
 	bool cont_dirty;
@@ -674,53 +845,94 @@ class Search
 	CapturedTailWParams initial_with_params;
 	std::vector<boost::any> initial_params;
 	std::vector<boost::any> params;
+	int iwp_length;
 public:
 	void clean_cont() {
 		if (cont_dirty) {
 			cont_dirty = false;
 			cont.clear();
 			tail_with_params.clear();
-			params.clear();
 		}
 	}
 
 	std::map<const char *,boost::any> results;
 	friend void fail(Search &s);
 	bool running() { return !failed;  }
-	void save_undo(const CapturedCont &c) { amblist.push_back(AmbRecord{AMB_UNDO,c}); }
+	void save_undo(const CapturedCont &c) { amblist.push_back(AmbRecord(AMB_UNDO,c)); }
 	//save_undo is only called from unify so I don't think we need this conversion
-	void save_undo(const UncountedCont &c) { amblist.push_back(AmbRecord{ AMB_UNDO,CapturedCont(c) }); }
-	void alt(const CapturedCont &c) { amblist.push_back(AmbRecord{ AMB_ALT,c }); }
-	void alt(const UncountedCont &c) { amblist.push_back(AmbRecord{ AMB_ALT,CapturedCont(c) }); }
+	void save_undo(const UncountedCont &c) { amblist.push_back(AmbRecord( AMB_UNDO,CapturedCont(c) )); }
+	void alt(const CapturedCont &c) { amblist.push_back(AmbRecord( AMB_ALT,c )); }
+	void alt(const UncountedCont &c) { amblist.push_back(AmbRecord( AMB_ALT,CapturedCont(c) )); }
+	void alt(void(*c)(Search &)) { amblist.push_back(AmbRecord(AMB_ALT, CapturedCont(c))); }
 
-	void apply_params(const CapturedTailWParams &c, std::vector<boost::any> &p)
+	void alt(const CapturedTailWParams c, Params l) {
+		for (auto a : l) params.push_back(a);
+		amblist.push_back(AmbRecord(AMB_ALT, (int)l.size(), c));
+	}
+	void alt(void(*c)(Search &, Params), Params l) {
+		for (auto a : l) params.push_back(a);
+		amblist.push_back(AmbRecord(AMB_ALT, (int)l.size(), CapturedTailWParams(c)));
+	}
+
+	//note the redundant code is a workaround for a visual studio 2015 compiler bug
+	void apply_params(const CapturedTailWParams &c, int size, std::vector<boost::any> &par, bool erase)
 	{
-		switch (p.size())
+		//Params l;
+
+		auto p = par.end() - size;
+		switch (size)
 		{
 		case 0:
+		{
 			(*c)(*this, {});
-			break;
+		}
+		break;
 		case 1:
-			(*c)(*this, { p[0] });
-			break;
+		{Params l = { p[0] };
+		if (erase) par.erase(p, par.end());
+		(*c)(*this, l);
+		}
+		break;
 		case 2:
-			(*c)(*this, { p[0],p[1] });
-			break;
+		{Params l = { p[0],p[1] };
+		if (erase) par.erase(p, par.end());
+		(*c)(*this, l);
+		}
+		break;
 		case 3:
-			(*c)(*this, { p[0],p[1],p[2] });
-			break;
+		{Params l = { p[0],p[1],p[2] };
+		if (erase) par.erase(p, par.end());
+		(*c)(*this, l);
+		}
+		break;
 		case 4:
-			(*c)(*this, { p[0],p[1],p[2],p[3] });
-			break;
+		{
+			Params l = { p[0],p[1],p[2],p[3] };
+			if (erase) par.erase(p, par.end());
+			(*c)(*this, l);
+		}
+		break;
 		case 5:
-			(*c)(*this, { p[0],p[1],p[2],p[3],p[4] });
-			break;
+		{
+			Params l = { p[0], p[1], p[2], p[3], p[4] };
+			if (erase) par.erase(p, par.end());
+			(*c)(*this, l);
+		}
+		break;
 		case 6:
-			(*c)(*this, { p[0],p[1],p[2],p[3],p[4],p[5] });
-			break;
+		{
+			Params l = { p[0],p[1],p[2],p[3],p[4],p[5] };
+			if (erase) par.erase(p, par.end());
+			(*c)(*this, l);
+		}
+		break;
 		case 7:
-			(*c)(*this, { p[0],p[1],p[2],p[3],p[4],p[5],p[6] });
-			break;
+		{
+			Params l = { p[0],p[1],p[2],p[3],p[4],p[5],p[6] };
+			if (erase) par.erase(p, par.end());
+			(*c)(*this, l);
+		}
+		break;
 		default:
 			throw std::logic_error("more than 7 parameters in tail call to Search");
 		}
@@ -731,7 +943,7 @@ public:
 	{
 		if (--stack_saver < 1) {
 			tail_with_params = c;
-			params.clear();
+			iwp_length = (int)l.size();
 			for (auto a : l) params.push_back(a);
 			cont_dirty = true;
 			throw(CleanStackExceptionWParams());
@@ -744,7 +956,7 @@ public:
 	{
 		if (--stack_saver < 1) {
 			tail_with_params = c;
-			params.clear();
+			iwp_length = (int)l.size();
 			for (auto a : l) params.push_back(a);
 			cont_dirty = true;
 			throw(CleanStackExceptionWParams());
@@ -755,7 +967,7 @@ public:
 	{
 		if (--stack_saver < 1) {
 			tail_with_params = CapturedTailWParams(c);
-			params.clear();
+			iwp_length = (int)l.size();
 			for (auto a : l) params.push_back(a);
 			cont_dirty = true;
 			throw(CleanStackExceptionWParams());
@@ -798,8 +1010,23 @@ public:
 	//instead
 	void fail() {
 		CapturedCont c = amblist.back().cont;
-		amblist.pop_back();
-		tail(c); //tail call
+		if (c) {
+			amblist.pop_back();
+			tail(c); //tail call
+		}
+		else {
+			CapturedTailWParams t = amblist.back().twp;
+			int size = amblist.back().params;
+			amblist.pop_back();
+			if (--stack_saver < 1) {
+				tail_with_params = t;
+				iwp_length = size;
+				cont_dirty = true;
+				throw(CleanStackExceptionWParams());
+			}
+			clean_cont();
+			apply_params(t, size, params, true);
+		}
 	}
 	int snip_start() { return (int)amblist.size()-1; }
 	void snip(int pos) {
@@ -808,6 +1035,7 @@ public:
 			if (amblist.back().tag == AMB_UNDO) {
 				temp.push_back(amblist.back());
 			}
+			params.erase(params.end() - amblist.back().params, params.end());
 			amblist.pop_back();
 		}
 		while (!temp.empty()) {
@@ -885,7 +1113,7 @@ public:
 			retry = false;
 			try {
 				if (has_params) {
-					apply_params(tail_with_params, params);
+					apply_params(tail_with_params, iwp_length ,params,true);
 				}else
 				(*cont)(*this);//cont keeps the capturedCont from being collected for a long time {}{}{}
 			}
@@ -901,6 +1129,39 @@ public:
 			}
 		}
 		return !failed;
+	}
+	void  unify(LVar a, LVar b, CapturedCont c)
+	{
+		if (!_unify(*this, a, b)) fail();
+		else tail(c);
+	}
+	template<typename T>
+	void  unify(LVar a, LVar b, T c, Params l)
+	{
+		if (!_unify(*this, a, b)) fail();
+		else tail(c,l);
+	}
+	void identical(LVar a, LVar b, CapturedCont c)
+	{
+		if (!_identical(a, b)) fail();
+		else tail(c);
+	}
+	CapturedCont not_identical(LVar a, LVar b, CapturedCont c)
+	{
+		if (_identical(a, b)) fail();
+		else tail(c);
+	}
+	template<typename T>
+	void identical(LVar a, LVar b, T c, Params l)
+	{
+		if (!_identical(a, b)) fail();
+		else tail(c,l);
+	}
+	template<typename T>
+	CapturedCont not_identical(LVar a, LVar b, T c, Params l)
+	{
+		if (_identical(a, b)) fail();
+		else tail(c,l);
 	}
 };
 //allows you to use failure as a continuation
@@ -918,29 +1179,29 @@ bool _unify(Search &s, LVar &a, LVar&b)
 	if (strict_equals(a_target, b_target)) return true; //test strict equals on uninstanciated {}{}{}
 	if (a_target.uninstanciatedp() && b_target.uninstanciatedp())
 	{
-		CapturedVar<LValue> restore_a = a_target->value;
+		CapturedVar<LValue> restore_a = a_target.get()->value;
 		a_target.chain(b_target);
 		CapturedVar<LVar> a_save = a_target;
 		CapturedCont undo;
-		*undo = [=](Search &s) { a_save->value = restore_a->value; s.fail();};
+		*undo = [=](Search &s) { (*a_save)->value = *restore_a; s.fail();};
 		s.save_undo(undo);
 		return true;
 	}
 	else if (a_target.uninstanciatedp()) {
-		CapturedVar<LValue> restore_a = a_target->value;
-		a_target->value= b_target->value;
+		CapturedVar<LValue> restore_a = a_target.get()->value;
+		a_target->value= b_target.get()->value;
 		CapturedVar<LVar> a_save = a_target;
 		CapturedCont undo;
-		*undo = [=](Search &s) { a_save->value = restore_a->value; s.fail();};
+		*undo = [=](Search &s) { (*a_save)->value = *restore_a; s.fail();};
 		s.save_undo(undo);
 		return true;
 	}
 	else if (b_target.uninstanciatedp()) {
-		CapturedVar<LValue> restore_b = b_target->value;
-		b_target->value = a_target->value;
+		CapturedVar<LValue> restore_b = b_target.get()->value;
+		b_target->value = a_target.get()->value;
 		CapturedVar<LVar> b_save = b_target;
 		CapturedCont undo;
-		*undo = [=](Search &s) { b_save->value = restore_b->value; s.fail();};
+		*undo = [=](Search &s) { (*b_save)->value = *restore_b; s.fail();};
 		s.save_undo(undo);
 		return true;
 	}
@@ -966,45 +1227,43 @@ bool _identical(LVar &a, LVar&b)
 	return false;
 }
 
+void unify_tests(Search &s)
+{
+	CLVar A, B, C,D,E,F,G;
+	CLVar hello("hello"), one(1), willBeHello, willBeOne,l1(L(*A,"hello",*B,L(*one,*C,*hello),*F));
+	CapturedCont c,d,e,f,g,h,i,j,k,l;
+	*c = [=](Search &s)
+	{ 
+		cout << *hello <<"?="<< *willBeHello << endl;
+		s.identical(1, *one, d);
+	};
+	*d = [=](Search &s) { 
+		cout << *one << "?=" << *willBeOne << endl;
+		s.alt(f);
+		s.identical(*hello, "hello", e);
+	};
+	*e = [=](Search &s) { 
+		cout << "compare with string succeeded" << endl;
+		s.alt(g);
+		s.identical(*F, *G, h);
 
-CapturedCont LVar::unify(LVar &other, CapturedCont c)
-{
-	;	CapturedVar<LVar> a = *this;
-	CapturedVar<LVar> b = other;
-	CapturedCont ret;
-	*ret = [=](Search &s)
-	{
-		if (!_unify(s, *a, *b)) s.fail();
-		s.tail(c);
 	};
-	return ret;
-}
-CapturedCont LVar::identical(LVar &other, CapturedCont c)
-{
-	CapturedVar<LVar> a = *this;
-	CapturedVar<LVar> b = other;
-	CapturedCont ret;
-	*ret = [=](Search &s)
-	{
-		if (!_identical(*a, *b)) s.fail();
-		s.tail(c);
+	*f = [=](Search &s) { cout << "compare with string failed" << endl;};
+	*g = [=](Search &s) 
+	{ 
+		cout << "unlike compare with vars did the right thing" << endl;
+		s.alt(i);
+		s.unify(*l1, L("Say", *D, "there", L(*E, 2, "hello"), *G),j);
 	};
-	return ret;
-}
-CapturedCont LVar::not_identical(LVar &other, CapturedCont c)
-{
-	CapturedVar<LVar> a = *this;
-	CapturedVar<LVar> b = other;
-	CapturedCont ret;
-	*ret = [=](Search &s)
-	{
-		if (_identical(*a, *b)) s.fail();
-		s.tail(c);
-	};
-	return ret;
-}
+	*h = [=](Search &s) { cout << "unlike compare with vars did the wrong thing" << endl;};
+	*i = [=](Search &s) { cout << "list unify failed" << *A << " " << *D << " " << *B << " " << *E << " " << *C << endl;};
+	*j = [=](Search &s) { s.alt(l); s.identical(*F,*G,k);};
+	*k = [=](Search &s) { cout << "list unify: " <<*A<<" "<<*D<<" "<<*B<<" "<<*E<<" "<<*C<<" "<<*F<<" "<<*G<< endl;};
+	*l = [=](Search &s) { cout << "var unify failed" << endl;};
 
 
+	s.unify(*hello, *willBeHello,c);
+}
 //oops, the return value could be nixed by stack clean exception
 //but it worked when I made it always throw... {}{}{} WHY DOES IT WORK?
 //OH it works because it doesn't use the search until AFTER it returns the value
@@ -1028,7 +1287,7 @@ CapturedCont stream1(CapturedVar<int> m, CapturedCont c)
 			s.tail(c);
 		}
 	};
-	cout << rest->use_count() << endl;
+	cout << rest.get()->use_count() << endl;
 	return rest;
 }
 
@@ -1074,9 +1333,9 @@ void AmbTest(Search &s)
 			s.results.insert_or_assign("m", *m);
 		}
 	};
-	cout << c1->use_count() << endl;
-	cout << c2->use_count() << endl;
-	cout << c3->use_count() << endl;
+	cout << c1.get()->use_count() << endl;
+	cout << c2.get()->use_count() << endl;
+	cout << c3.get()->use_count() << endl;
 	s.tail(c1);
 }
 
@@ -1171,6 +1430,151 @@ void QueenRow(Search &s, Params params)// {int row}
 	s.tail(loop, { 1 });
 }
 
+//verb([eats | O], O, v(eats)).
+//verb([plays with | O], O, v(plays with)).
+void verb(Search &s, Params params)
+{
+	auto p = params.begin();
+	CapturedCont c;
+	c = any_cast<CapturedCont>(p[0]);
+	LVar O;
+	LVar X = any_cast<LVar>(p[1]),
+		Y = any_cast<LVar>(p[2]),
+		Z = any_cast<LVar>(p[3]);
+
+	CapturedCont rest;
+	*rest = [=](Search &s) { s.unify(L(X, Y, Z), L(L("plays","with", DOT, O), O, L("v", "plays", "with")), c); };
+	s.alt(rest);
+	s.unify(L(X, Y, Z), L(L("eats", DOT, O), O, L("v", "eats")), c);
+}
+
+
+//noun([bat | O], O, n(bat)).
+//noun([cat | O], O, n(cat)).
+
+void noun(Search &s, Params params)
+{
+	auto p = params.begin();
+	CapturedCont c;
+	c = any_cast<CapturedCont>(p[0]);
+	LVar O;
+	LVar X = any_cast<LVar>(p[1]),
+		Y = any_cast<LVar>(p[2]),
+		Z = any_cast<LVar>(p[3]);
+
+	CapturedCont rest;
+	*rest = [=](Search &s) { s.unify(L(X, Y, Z), L(L("cat", DOT, O), O, L("n","cat")),c); };
+	s.alt(rest);
+	s.unify(L(X, Y, Z), L(L("bat", DOT, O), O, L("n", "bat")),c);
+}
+
+//det([the | O], O, d(the)).
+//det([a | O], O, d(a)).
+void det(Search &s, Params params)
+{
+	auto p = params.begin();
+	CapturedCont c;
+	c = any_cast<CapturedCont>(p[0]);
+	LVar O;
+	LVar X = any_cast<LVar>(p[1]),
+		Y = any_cast<LVar>(p[2]),
+		Z = any_cast<LVar>(p[3]);
+
+	CapturedCont rest;
+	*rest = [=](Search &s) { s.unify(L(X, Y, Z), L(L("a", DOT, O), O, L("d", "a")), c); };
+	s.alt(rest);
+	s.unify(L(X, Y, Z), L(L("the", DOT, O), O, L("d", "the")), c);
+}
+//noun_phrase(A,B,np(D,N)) :- det(A,C,D), noun(C,B,N).
+void noun_phrase(Search &s, Params params)
+{
+	auto p = params.begin();
+	CapturedCont c;
+	c = any_cast<CapturedCont>(p[0]);
+	LVar A, B, C, D, N;
+	LVar X = any_cast<LVar>(p[1]),
+		Y = any_cast<LVar>(p[2]),
+		Z = any_cast<LVar>(p[3]);
+	CapturedCont r1, r2;
+
+	*r1 = [=](Search &s) { s.tail(det, { r2,A,C,D }); };
+	*r2 = [=](Search &s) { s.tail(noun, { c,C,B,N }); };
+	s.unify(L(X, Y, Z), L(A, B, L("np", D, N)), r1);
+}
+
+//verb_phrase(A,B,vp(V,NP)):- verb(A,C,V), noun_phrase(C,B,NP).
+void verb_phrase(Search &s, Params params)
+{
+	auto p = params.begin();
+	CapturedCont c;
+	c = any_cast<CapturedCont>(p[0]);
+	LVar  A,B,C,V,NP;
+	LVar X = any_cast<LVar>(p[1]),
+		Y = any_cast<LVar>(p[2]),
+		Z = any_cast<LVar>(p[3]);
+	CapturedCont r1,r2;
+
+	*r1 = [=](Search &s) { s.tail(verb, { r2,A,C,V }); };
+	*r2 = [=](Search &s) { s.tail(noun_phrase, { c,C,B,NP }); };
+	s.unify(L(X,Y,Z),L(A,B,L("vp",V,NP)),r1 );
+}
+//sentence(A, B, s(NP, VP)) :-noun_phrase(A, C, NP), verb_phrase(C, B, VP).
+void sentence(Search &s, Params params)
+{
+	auto p = params.begin();
+	CapturedCont c;
+	c = any_cast<CapturedCont>(p[0]);
+	LVar  A, B, C, VP, NP;
+	LVar X = any_cast<LVar>(p[1]),
+		Y = any_cast<LVar>(p[2]),
+		Z = any_cast<LVar>(p[3]);
+	CapturedCont r1, r2;
+
+	*r1 = [=](Search &s) { s.tail(noun_phrase, { r2,A,C,NP }); };
+	*r2 = [=](Search &s) { s.tail(verb_phrase, { c,C,B,VP }); };
+	s.unify(L(X, Y, Z), L(A, B, L("s", NP, VP)), r1);
+}
+
+void gen_sentences(Search &s)
+{
+	LVar T, _, S;
+	CapturedCont display;
+	*display = [=](Search &s) { cout << "sentence: " << T << endl << "parse: " << S << endl; };
+	s.tail(sentence, { display,T,_,S });
+}
+void QueenRow2(Search &s, Params params)// {int row}
+{
+	auto p = params.begin();
+	CapturedCont c;
+	CapturedVar<int> r = any_cast<int>(p[0]);
+	CapturedTailWParams loop;
+	UncountedTailWParams loopu = loop;
+
+	//	cout << "r = " << *r << endl;
+
+	*c = [=](Search &s)
+	{
+		cout << "Solution: ";
+		for (int y = 0;y < QUEENS;++y) cout << rowsx[y] << ' ';
+		cout << endl;
+	};
+	*loop = [=](Search &s, Params params)
+	{
+		auto p = params.begin();
+		CapturedVar<int> nu = any_cast<int>(p[0]);
+
+		if (*nu <= QUEENS) {
+			s.alt(loopu, { *nu + 1 });
+			if (!distinct_from_all(*nu, *r)) s.fail();
+			else {
+				if (*r < QUEENS) s.tail(QueenRow, { *r + 1 });
+				else s.tail(c);
+			}
+		}
+		else s.fail();
+	};
+	s.tail(loop, { 1 });
+}
 
 
 int main()
@@ -1202,9 +1606,15 @@ int main()
 	while (s()) {
 		std::cout << "n = " << s.results["n"] << " m = " << s.results["m"] << std::endl;
 	}
-	Search q(QueenRow, { 1 });
+
+	Search g(gen_sentences);
+	while (g());
+
+
+	Search q(QueenRow2, { 1 });
 	q();
-	
+	Search u(unify_tests);
+	u();
 
 	LVar A1;
 	LVar B1("hello"), B2("hello");
@@ -1218,6 +1628,8 @@ int main()
 	LVar D3;D2.chain(A2);
 	cout << "equals tests " << strict_equals(A1, A2) << " " << strict_equals(B1, B3) << " " << strict_equals(C1, C3) << " " << strict_equals(D1, D3) << " " << endl;
 	
+
 	char temp[100];
 	std::cin >> temp;
+
 }
