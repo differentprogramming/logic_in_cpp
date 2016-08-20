@@ -95,6 +95,199 @@ void free_to_freelist(void *v)
 }
 #endif
 
+//very simple not thread safe class compatible with intrusive_ptr
+//the point of this class is that you can define both counted and eternal/singleton objects
+//and the built in class doesn't have that
+class SimpleRefCount
+{
+protected:
+	static const int SINGLETON = -1000000;
+public:
+	int _ref;
+	int use_count() const { return _ref; }
+	void _inc() { if (_ref != SINGLETON) ++_ref; }
+	SimpleRefCount * _dec() {
+		if (_ref != SINGLETON) if (0 == --_ref) return this;
+		return nullptr;
+	}
+	SimpleRefCount() :_ref(0) {}
+	SimpleRefCount(int initial) :_ref(initial) {}
+	virtual ~SimpleRefCount()
+	{}
+
+#ifdef OWN_MEMORY_MANAGEMENT
+	static intptr_t blocksize;
+	static FreeList *free_list;
+	void * operator new (size_t size)
+	{
+		k
+			assert(size == sizeof(SimpleRefCount));
+		return allocate_from_freelist<SimpleRefCount>();
+	}
+	void * operator new (size_t, void *place)
+	{
+		return place;
+	}
+	void operator delete (void *, void *) {}
+
+	void operator delete (void * mem)
+	{
+		free_to_freelist<SimpleRefCount>(mem);
+	}
+#endif
+};
+
+#ifdef OWN_MEMORY_MANAGEMENT
+intptr_t SimpleRefCount::blocksize = intptr_t((sizeof(SimpleRefCount) + sizeof(SimpleRefCount) - 1)&~((sizeof(SimpleRefCount) + sizeof(SimpleRefCount) - 1) >> 1));
+FreeList *SimpleRefCount::free_list = nullptr;
+#endif
+
+void intrusive_ptr_add_ref(SimpleRefCount *p)
+{
+	p->_inc();
+}
+void intrusive_ptr_release(SimpleRefCount *p)
+{
+	SimpleRefCount * d = p->_dec();
+	if (d) delete d;
+}
+
+
+class TrampolineLetter :public SimpleRefCount
+{
+public:
+	TrampolineLetter() {}
+	TrampolineLetter(int i) :SimpleRefCount(i) {}
+	virtual ~TrampolineLetter() {}
+	virtual intrusive_ptr<TrampolineLetter> execute() = 0;
+	virtual bool isNull() const { return false; }
+};
+
+
+template <typename T>
+class Trampoline0 : public TrampolineLetter
+{
+	T fn;
+public:
+	Trampoline0(const T &f) :fn(f) {  }
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(); }
+};
+
+class NullTrampoline : public TrampolineLetter
+{
+public:
+	NullTrampoline() :TrampolineLetter(SimpleRefCount::SINGLETON) { }
+	virtual bool isNull() const { return true; }
+	virtual intrusive_ptr<TrampolineLetter> execute() { return this; }
+};
+
+template <typename T, typename P1>
+class Trampoline1 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+public:
+	Trampoline1(const T &f, const P1 &_p1) :fn(f), p1(_p1) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1); }
+};
+
+template <typename T, typename P1, typename P2>
+class Trampoline2 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+public:
+	Trampoline2(const T &f, const P1 &_p1, const P2 &_p2) :fn(f), p1(_p1), p2(_p2) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2); }
+};
+
+template <typename T, typename P1, typename P2, typename P3>
+class Trampoline3 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+public:
+	Trampoline3(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3) :fn(f), p1(_p1), p2(_p2), p3(_p3) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3); }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4>
+class Trampoline4 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+public:
+	Trampoline4(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4); }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
+class Trampoline5 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+public:
+	Trampoline5(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5); }
+};
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
+class Trampoline6 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+	P6 p6;
+public:
+	Trampoline6(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6); }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
+class Trampoline7 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+	P6 p6;
+	P7 p7;
+public:
+	Trampoline7(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6, p7); }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
+class Trampoline8 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+	P6 p6;
+	P7 p7;
+	P8 p8;
+public:
+	Trampoline8(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7, const P8 &_p8) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7), p8(_p8) {}
+	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6, p7, p8); }
+};
+
 /* CombinableRefCount is a replacement for intrusive_ref_counter<_, boost::thread_unsafe_counter >
 * With the difference that you can combine a bunches of them to share a reference counter.
 * The point of that is to handle the case where a bunch of objects create a cycle of references.
@@ -170,9 +363,9 @@ public:
 	{
 		return place;
 	}
-	void operator delete (void *, void *){}
+	void operator delete (void *, void *) {}
 
-		void operator delete (void * mem)
+	void operator delete (void * mem)
 	{
 		free_to_freelist<CombinableRefCount>(mem);
 	}
@@ -303,9 +496,9 @@ public:
 	CapturedVar(const T& v) :intrusive_ptr(new CapturedVarLetter<T>(v)) {}
 
 	template<typename U>
-	CapturedVar(CombineRefType, const CapturedVar<U> &c) :intrusive_ptr(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
+	CapturedVar(CombineRefType, const CapturedVar<U> &c) : intrusive_ptr(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
 	template<typename U>
-	CapturedVar(CombineRefType, const UncountedVar<U> &c) :intrusive_ptr(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
+	CapturedVar(CombineRefType, const UncountedVar<U> &c) : intrusive_ptr(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
 
 
 	CapturedVar() :intrusive_ptr(new CapturedVarLetter<T>()) {}
@@ -317,15 +510,30 @@ public:
 		*static_cast<intrusive_ptr< CapturedVarLetter<T> > *>(this) = nullptr;
 	}
 
+	auto operator()() { return (this->operator *())(); }
+	template <typename P1>
+	auto operator()(P1 &&p1) { return (this->operator *())(p1); }
+	template <typename P1, typename P2>
+	auto operator()(P1 &&p1, P2 &&p2) { return (this->operator *())(p1, p2); }
+	template <typename P1, typename P2, typename P3>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3) { return (this->operator *())(p1, p2, p3); }
+	template <typename P1, typename P2, typename P3, typename P4>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4) { return (this->operator *())(p1, p2, p3, p4); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5) { return (this->operator *())(p1, p2, p3, p4, p5); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6) { return (this->operator *())(p1, p2, p3, p4, p5, p6); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7) { return (this->operator *())(p1, p2, p3, p4, p5, p6, p7); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7, P8 &&p8) { return (this->operator *())(p1, p2, p3, p4, p5, p6, p7, p8); }
+
 	T * operator->() { return &get()->value; }
 	T * operator->() const { return &get()->value; }
 	T& operator *() { return get()->value; }
 	T& operator *() const { return get()->value; }
 };
 
-
-typedef CapturedVar<Continuation> CapturedCont;
-typedef CapturedVar<TailWithParams> CapturedTailWParams;
 
 //typedef CapturedVarLetter<Continuation> *UncountedCont;
 template <typename T>
@@ -335,9 +543,9 @@ public:
 	CapturedVarLetter<T> * value;
 	UncountedVar(const CapturedVar<T> &c) :value(c.get()) {}
 	template<typename U>
-	UncountedVar(CombineRefType, const CapturedVar<U> &c) :value(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
+	UncountedVar(CombineRefType, const CapturedVar<U> &c) : value(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
 	template<typename U>
-	UncountedVar(CombineRefType, const UncountedVar<U> &c) :value(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
+	UncountedVar(CombineRefType, const UncountedVar<U> &c) : value(new CapturedVarLetter<T>()) { c.get()->add_ref(*this); }
 
 	CapturedVarLetter<T> * get() const {
 		return const_cast<CapturedVarLetter<T> *>(value);
@@ -348,10 +556,24 @@ public:
 	T& operator *() { return value->value; }
 	T& operator *() const { return const_cast<T&>(value->value); }
 
+	auto operator()() { return (this->operator *())(); }
+	template <typename P1>
+	auto operator()(P1 &&p1) { return (this->operator *())(p1); }
+	template <typename P1, typename P2>
+	auto operator()(P1 &&p1, P2 &&p2) { return (this->operator *())(p1, p2); }
+	template <typename P1, typename P2, typename P3>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3) { return (this->operator *())(p1, p2, p3); }
+	template <typename P1, typename P2, typename P3, typename P4>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4) { return (this->operator *())(p1, p2, p3, p4); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5) { return (this->operator *())(p1, p2, p3, p4, p5); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6) { return (this->operator *())(p1, p2, p3, p4, p5, p6); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7) { return (this->operator *())(p1, p2, p3, p4, p5, p6, p7); }
+	template <typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
+	auto operator()(P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7, P8 &&p8) { return (this->operator *())(p1, p2, p3, p4, p5, p6, p7, p8); }
 };
-
-typedef UncountedVar<Continuation> UncountedCont;
-typedef UncountedVar<TailWithParams> UncountedTailWParams;
 
 template<typename T>
 CapturedVar<T>::CapturedVar(const UncountedVar<T> &o) :intrusive_ptr(o.value) {}
@@ -368,6 +590,123 @@ CombinableRefCount * combine_refs(const CapturedVar<T> &_first, Types ... rest)
 	u->_next = first;
 	return u;
 }
+
+
+template <typename T>
+auto make_counted(T && o) {
+	return o;
+}
+template <typename T>
+CapturedVar<T> make_counted(const UncountedVar<T> &o) {
+	return *o.get();
+}
+
+template <typename T>
+CapturedVar<T> make_counted(UncountedVar<T> &o) {
+	return *o.get();
+}
+
+std::reference_wrapper<Search> make_counted(Search &o) {
+	return std::ref(o);
+}
+
+template <typename T, typename P1>
+inline TrampolineLetter* new_trampoline(T &&f)
+{
+	return new Trampoline0<T>(f);
+}
+
+template <typename T, typename P1>
+inline TrampolineLetter* new_trampoline(T &&f, P1 &&p1)
+{
+	return new Trampoline1<T, P1>(f, p1);
+}
+template <typename T, typename P1, typename P2>
+inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2)
+{
+	return new Trampoline2<T, P1, P2>(f, p1, p2);
+}
+template <typename T, typename P1, typename P2, typename P3>
+inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3)
+{
+	return new Trampoline3<T, P1, P2, P3>(f, p1, p2, p3);
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4>
+inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4)
+{
+	return new Trampoline4<T, P1, P2, P3, P4>(f, p1, p2, p3, p4);
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
+inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5)
+{
+	return new Trampoline5<T, P1, P2, P3, P4, P5>(f, p1, p2, p3, p4, p5);
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
+inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6)
+{
+	return new Trampoline6<T, P1, P2, P3, P4, P5, P6>(f, p1, p2, p3, p4, p5, p6);
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
+inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7)
+{
+	return new Trampoline7<T, P1, P2, P3, P4, P5, P6, P7>(f, p1, p2, p3, p4, p5, p6, p7);
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
+inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7, P8 &&p8)
+{
+	return new Trampoline8<T, P1, P2, P3, P4, P5, P6, P7, P8>(f, p1, p2, p3, p4, p5, p6, p7, p8);
+}
+
+
+template <typename T>
+intrusive_ptr<TrampolineLetter> trampoline(T &&f)
+{
+	return new_trampoline(make_counted(f));
+}
+template <typename T, typename P1>
+intrusive_ptr<TrampolineLetter> trampoline(T &&f, P1 &&p1)
+{
+	return new_trampoline(make_counted(f), make_counted(p1));
+}
+template <typename T, typename P1, typename P2>
+intrusive_ptr<TrampolineLetter> trampoline(T &&f, P1 &&p1, P2 &&p2)
+{
+	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2));
+}
+template <typename T, typename P1, typename P2, typename P3>
+intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3)
+{
+	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3));
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4>
+intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4)
+{
+	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4));
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
+intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5)
+{
+	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5));
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
+intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6)
+{
+	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5), make_counted(p6));
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
+intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7)
+{
+	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5), make_counted(p6), make_counted(p7));
+}
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
+intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7, P8 &&p8)
+{
+	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5), make_counted(p6), make_counted(p7), make_counted(p8));
+}
+
+typedef intrusive_ptr<TrampolineLetter> Trampoline;
+
+Trampoline end_search = new NullTrampoline();
 
 
 //for testing with .which()
@@ -436,6 +775,8 @@ public:
 	bool nullp() { return target_type() == LV_NIL; }
 	bool listp() { LVType t = target_type(); return t == LV_NIL || t==LV_LIST; }
 	bool pairp() { return target_type() == LV_LIST; }
+	void set_car(LVar &t);
+	void set_cdr(LVar &t);
 
 //	LV_NIL,LV_UNINSTANCIATED,LV_DOUBLE,LV_STRING,LV_LVAR,LV_LIST,LV_CUSTOM,LV_DATA1,LV_DATA2,LV_DATA3,LV_DATA4
 	LVType type() const;
@@ -443,7 +784,7 @@ public:
 	bool doublep() { return type() == LV_DOUBLE; }
 	bool stringp() { return type() == LV_STRING; }
 	bool lvarp() { return type() == LV_LVAR; }
-
+	void operator = (const LVar &o);
 
 
 	bool ground()  { 
@@ -533,6 +874,8 @@ inline LVar::LVar(LogicalVariant *v) :intrusive_ptr<LogicalVariant>(v) {}
 inline LVar::LVar(InternedString s) : intrusive_ptr<LogicalVariant>(new LogicalVariant(s)) {}
 inline void LVar::chain(LVar &o) { (*this)->value = o; }
 inline LVType LVar::target_type() { return get_target().type(); }
+inline void LVar::operator = (const LVar &o) { (*this)->value = o->value; }
+
 LVType LVar::type() const
 {
 	LVType t = (LVType)(*this)->value.which();
@@ -565,8 +908,8 @@ inline LogicalVariant * LInit()
 //ostream & operator<<(ostream & os, const LogicalVariant &v);
 ostream & operator<<(ostream & os, const LVar &v);
 
-typedef CapturedVar<LVar> CLVar;
-typedef UncountedVar<LVar> ULVar;
+//typedef CapturedVar<LVar> CLVar;
+//typedef UncountedVar<LVar> ULVar;
 
 
 struct DotHolder
@@ -609,7 +952,7 @@ end
 	LCons(LVar& first, LVar& rest) :car(first), cdr(rest) {}
 	LCons(LValue first, LVar& rest) :car(new LogicalVariant(first)), cdr(rest) {}
 	LCons(LVar& first, LValue rest) :car(first), cdr(new LogicalVariant(rest)) {}
-	
+
 	//Note there is an extra level of indirection here so that there doesn't have to be
 	//some complicated plumbing for the garbage collection.  And remember LVars should never be NULL
 	LVar car;
@@ -656,6 +999,10 @@ intrusive_ptr<LogicalData> LVar::as_LogicalValue() {
 }
 LVar LVar::car() { return as_LCons()->car.get_target(); }
 LVar LVar::cdr() { return as_LCons()->cdr.get_target(); }
+
+void LVar::set_car(LVar &t) { return as_LCons()->car.get_target()=t; }
+void LVar::set_cdr(LVar &t) { return as_LCons()->cdr.get_target() = t; }
+
 
 const char *LCons::open_paren = "( ";
 const char *LCons::close_paren = " )";
@@ -781,252 +1128,71 @@ bool strict_equals(LVar &a, LVar &b)
 	return  boost::apply_visitor(are_strict_equals(), a->value, b->value);
 }
 
-struct CleanStackException
-{
-};
-struct CleanStackExceptionWParams
-{
-};
-
-const int STACK_SAVER_DEPTH = 30;
-
 bool _unify(Search &s, LVar &a, LVar&b);
 bool _identical(LVar &a, LVar&b);
+
+#define CapturedLambda(...) CapturedVar<std::function<Trampoline (__VA_ARGS__) >>
+#define UncountedLambda(...) UncountedVar<std::function<Trampoline (__VA_ARGS__) >>
+
+typedef CapturedLambda(Search &) CapturedCont;
+typedef UncountedLambda(Search &) UncountedCont;
+
 
 class Search
 {
 	enum AmbTag { AMB_UNDO, AMB_ALT };
 	struct AmbRecord {
 		AmbTag tag;
-		CapturedCont cont;
-		CapturedTailWParams twp;
-		int params;
-		AmbRecord(AmbTag t, CapturedCont c) :tag(t), cont(c), twp(nullptr), params(0) {}
-		AmbRecord(AmbTag t, int n, CapturedTailWParams c) :tag(t), cont(nullptr), twp(c), params(n) {}
+		Trampoline cont;
+		AmbRecord(AmbTag t, Trampoline c) :tag(t), cont(c) {}
 
 	};
 	std::vector<AmbRecord> amblist;
 
-	static const CapturedCont captured_fail;
+	Trampoline captured_fail;
 
-	static void fail_fn(Search &s)
+	static Trampoline fail_fn(Search &s)
 	{
 		s.failed = true;
-		s.save_undo(captured_fail);
+		s.save_undo(s.captured_fail);
+		return end_search;
 	}
 
 	void new_amblist()
 	{
 		failed = false;
 		started = false;
-		params.clear();
 		amblist.clear();
 		amblist.push_back(AmbRecord( AMB_UNDO,captured_fail));
 	}
 	bool started;
-	int stack_saver;
-	CapturedCont cont;
-	CapturedTailWParams tail_with_params;
+	Trampoline cont;
 	bool failed;
-	//used by friend function fail() ie, lets you use fail as a continuation 
-	CapturedCont _for_fail()
-	{
-		CapturedCont c = amblist.back().cont;
-		amblist.pop_back();
-		return c;
-	}
-	void start() 
-	{ 
-		if (initial_params.size() != 0) apply_params(initial_with_params, (int)initial_params.size(),initial_params,false);
-		else tail(initial); 
-	}
-	bool cont_dirty;
-	CapturedCont initial;
-	CapturedTailWParams initial_with_params;
-	std::vector<boost::any> initial_params;
-	std::vector<boost::any> params;
-	int iwp_length;
+	Trampoline initial;
 public:
-	void clean_cont() {
-		if (cont_dirty) {
-			cont_dirty = false;
-			cont.clear();
-			tail_with_params.clear();
-		}
-	}
 
 	std::map<const char *,boost::any> results;
-	friend void fail(Search &s);
+
 	bool running() { return !failed;  }
-	void save_undo(const CapturedCont &c) { amblist.push_back(AmbRecord(AMB_UNDO,c)); }
-	//save_undo is only called from unify so I don't think we need this conversion
-	void save_undo(const UncountedCont &c) { amblist.push_back(AmbRecord( AMB_UNDO,CapturedCont(c) )); }
-	void alt(const CapturedCont &c) { amblist.push_back(AmbRecord( AMB_ALT,c )); }
-	void alt(const UncountedCont &c) { amblist.push_back(AmbRecord( AMB_ALT,CapturedCont(c) )); }
-	void alt(void(*c)(Search &)) { amblist.push_back(AmbRecord(AMB_ALT, CapturedCont(c))); }
-
-	void alt(const CapturedTailWParams c, Params l) {
-		for (auto a : l) params.push_back(a);
-		amblist.push_back(AmbRecord(AMB_ALT, (int)l.size(), c));
+	void save_undo(const Trampoline &c) { amblist.push_back(AmbRecord(AMB_UNDO,c)); }
+	void alt(Trampoline (*c)(Search &)) { amblist.push_back(AmbRecord(AMB_ALT, trampoline(c, *this))); }
+	void alt(const CapturedCont &c){
+		amblist.push_back(AmbRecord(AMB_ALT, trampoline(c,*this)));
 	}
-	void alt(void(*c)(Search &, Params), Params l) {
-		for (auto a : l) params.push_back(a);
-		amblist.push_back(AmbRecord(AMB_ALT, (int)l.size(), CapturedTailWParams(c)));
+	void alt(const UncountedCont &c) {
+		amblist.push_back(AmbRecord(AMB_ALT, trampoline(c, *this)));
 	}
-
-	//note the redundant code is a workaround for a visual studio 2015 compiler bug
-	void apply_params(const CapturedTailWParams &c, int size, std::vector<boost::any> &par, bool erase)
-	{
-		//Params l;
-
-		auto p = par.end() - size;
-		switch (size)
-		{
-		case 0:
-		{
-			(*c)(*this, {});
-		}
-		break;
-		case 1:
-		{Params l = { p[0] };
-		if (erase) par.erase(p, par.end());
-		(*c)(*this, l);
-		}
-		break;
-		case 2:
-		{Params l = { p[0],p[1] };
-		if (erase) par.erase(p, par.end());
-		(*c)(*this, l);
-		}
-		break;
-		case 3:
-		{Params l = { p[0],p[1],p[2] };
-		if (erase) par.erase(p, par.end());
-		(*c)(*this, l);
-		}
-		break;
-		case 4:
-		{
-			Params l = { p[0],p[1],p[2],p[3] };
-			if (erase) par.erase(p, par.end());
-			(*c)(*this, l);
-		}
-		break;
-		case 5:
-		{
-			Params l = { p[0], p[1], p[2], p[3], p[4] };
-			if (erase) par.erase(p, par.end());
-			(*c)(*this, l);
-		}
-		break;
-		case 6:
-		{
-			Params l = { p[0],p[1],p[2],p[3],p[4],p[5] };
-			if (erase) par.erase(p, par.end());
-			(*c)(*this, l);
-		}
-		break;
-		case 7:
-		{
-			Params l = { p[0],p[1],p[2],p[3],p[4],p[5],p[6] };
-			if (erase) par.erase(p, par.end());
-			(*c)(*this, l);
-		}
-		break;
-		default:
-			throw std::logic_error("more than 7 parameters in tail call to Search");
-		}
-
-	}
-
-	void tail(CapturedTailWParams c, Params l)
-	{
-		if (--stack_saver < 1) {
-			tail_with_params = c;
-			iwp_length = (int)l.size();
-			for (auto a : l) params.push_back(a);
-			cont_dirty = true;
-			throw(CleanStackExceptionWParams());
-		}
-		clean_cont();
-		(*c)(*this, l);
-	}
-
-	void tail(TailWithParams c, Params l)
-	{
-		if (--stack_saver < 1) {
-			tail_with_params = c;
-			iwp_length = (int)l.size();
-			for (auto a : l) params.push_back(a);
-			cont_dirty = true;
-			throw(CleanStackExceptionWParams());
-		}
-		c(*this, l);
-	}
-	void tail(void (*c)(Search &, Params), Params l)
-	{
-		if (--stack_saver < 1) {
-			tail_with_params = CapturedTailWParams(c);
-			iwp_length = (int)l.size();
-			for (auto a : l) params.push_back(a);
-			cont_dirty = true;
-			throw(CleanStackExceptionWParams());
-		}
-		clean_cont();
-		(*c)(*this, l);
-	}
-	void tail(void (*c)(Search &))
-	{
-		if (--stack_saver < 1) {
-			cont = CapturedCont(c);
-			cont_dirty = true;
-			throw(CleanStackException());
-		}
-		clean_cont();
-		(*c)(*this);
-	}
-	void tail(CapturedCont c)
-	{
-		if (--stack_saver < 1) {
-			cont = c;
-			cont_dirty = true;
-			throw(CleanStackException());
-		}
-		clean_cont();
-		(*c)(*this);
-	}
-	void tail(const Continuation &c)
-	{
-		if (--stack_saver < 1) {
-			cont = c;
-			cont_dirty = true;
-			throw(CleanStackException());
-		}
-		c(*this);
+	void alt(const Trampoline &c) {
+		amblist.push_back(AmbRecord(AMB_ALT, c));
 	}
 
 	//Note this can throw a CleanStackException so only call in tail position
 	//you can use the fail() function defined below the class as a continuation
 	//instead
-	void fail() {
-		CapturedCont c = amblist.back().cont;
-		if (c) {
-			amblist.pop_back();
-			tail(c); //tail call
-		}
-		else {
-			CapturedTailWParams t = amblist.back().twp;
-			int size = amblist.back().params;
-			amblist.pop_back();
-			if (--stack_saver < 1) {
-				tail_with_params = t;
-				iwp_length = size;
-				cont_dirty = true;
-				throw(CleanStackExceptionWParams());
-			}
-			clean_cont();
-			apply_params(t, size, params, true);
-		}
+	Trampoline fail() {
+		Trampoline c = amblist.back().cont;
+		amblist.pop_back();
+		return c; //tail call
 	}
 	int snip_start() { return (int)amblist.size()-1; }
 	void snip(int pos) {
@@ -1035,7 +1201,6 @@ public:
 			if (amblist.back().tag == AMB_UNDO) {
 				temp.push_back(amblist.back());
 			}
-			params.erase(params.end() - amblist.back().params, params.end());
 			amblist.pop_back();
 		}
 		while (!temp.empty()) {
@@ -1048,128 +1213,92 @@ public:
 	{
 		new_amblist();
 	}
+	template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5, P6 && p6, P7 && p7) :initial(trampoline(f, *this, p1, p2, p3, p4, p5, p6, p7)), captured_fail(trampoline(fail_fn, *this))
+	{
+		new_amblist();
+	}
 
-	Search(const Continuation &i) :initial(i), cont_dirty(false)
+	template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5, P6 && p6) :initial(trampoline(f, *this, p1, p2, p3, p4, p5, p6)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
-	Search(void(*i)(Search &)) :initial(Continuation(i)), cont_dirty(false)
+
+	template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5) :initial(trampoline(f, *this, p1, p2, p3, p4, p5)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
-	Search(const CapturedCont &i) :initial(i), cont_dirty(false)
+
+	template <typename T, typename P1, typename P2, typename P3, typename P4>
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4) :initial(trampoline(f, *this, p1, p2, p3, p4)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
-	Search(const UncountedCont &i) :initial(i), cont_dirty(false)
+
+	template <typename T, typename P1, typename P2, typename P3>
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3) :initial(trampoline(f, *this, p1, p2, p3)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
-	Search(const CapturedTailWParams &i, Params l) :initial_with_params(i), cont_dirty(false) 
-	{ 
-		new_amblist(); 
-		for (auto a : l) initial_params.push_back(a);
-	}
-	Search(const UncountedTailWParams &i, Params l) :initial_with_params(i), cont_dirty(false) 
-	{ 
-		new_amblist(); 
-		for (auto a : l) initial_params.push_back(a);
-	}
-	Search(const TailWithParams &i, Params l) :initial_with_params(i), cont_dirty(false) 
-	{ 
-		new_amblist(); 
-		for (auto a : l) initial_params.push_back(a);
-	}
-	Search(void(*i)(Search &, Params), Params l) :initial_with_params(i), cont_dirty(false) 
+
+	template <typename T, typename P1, typename P2>
+	Search(T &&f, P1 && p1, P2 && p2) :initial(trampoline(f, *this, p1, p2)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
-		for (auto a : l) initial_params.push_back(a);
+	}
+
+	template <typename T, typename P1>
+	Search(T &&f, P1 && p1) :initial(trampoline(f, *this,p1)), captured_fail(trampoline(fail_fn, *this))
+	{
+		new_amblist();
+	}
+
+	template <typename T>
+	Search(T &&f ):initial(trampoline(f, *this)), captured_fail(trampoline(fail_fn, *this))
+	{
+		new_amblist();
+	}
+	Search(const Trampoline i) :initial(i), captured_fail (trampoline( fail_fn, *this))
+	{
+		new_amblist();
 	}
 	~Search() {}
 	bool operator() ()
 	{
-		bool retry = false;
-		bool has_params = false;
-		stack_saver = STACK_SAVER_DEPTH;
-		try {
-			if (!started) {
-				started = true;
-				failed = false;
-				start();
-			}
-			else fail();
+		Trampoline c;
+		if (!started) {
+			started = true;
+			failed = false;
+			c=initial;
 		}
-		catch (CleanStackException &) {
-			stack_saver = STACK_SAVER_DEPTH;
-			retry = true;
-			has_params = false;
-		}
-		catch (CleanStackExceptionWParams &) {
-			stack_saver = STACK_SAVER_DEPTH;
-			retry = true;
-			has_params =true;
-		}
-		while (retry) {
-			retry = false;
-			try {
-				if (has_params) {
-					apply_params(tail_with_params, iwp_length ,params,true);
-				}else
-				(*cont)(*this);//cont keeps the capturedCont from being collected for a long time {}{}{}
-			}
-			catch (CleanStackException &) {
-				stack_saver = STACK_SAVER_DEPTH;
-				retry = true;
-				has_params = false;
-			}
-			catch (CleanStackExceptionWParams &) {
-				stack_saver = STACK_SAVER_DEPTH;
-				retry = true;
-				has_params = true;
-			}
-		}
+		else c=fail();
+		do { c = c->execute(); } while (!c->isNull());
 		return !failed;
 	}
-	void  unify(LVar a, LVar b, CapturedCont c)
+	Trampoline  unify(LVar a, LVar b, Trampoline c)
 	{
-		if (!_unify(*this, a, b)) fail();
-		else tail(c);
+		if (!_unify(*this, a, b)) return fail();
+		return c;
 	}
-	template<typename T>
-	void  unify(LVar a, LVar b, T c, Params l)
+	Trampoline identical(LVar a, LVar b, Trampoline c)
 	{
-		if (!_unify(*this, a, b)) fail();
-		else tail(c,l);
+		if (!_identical(a, b)) return fail();
+		return c;
 	}
-	void identical(LVar a, LVar b, CapturedCont c)
+	Trampoline not_identical(LVar a, LVar b, Trampoline c)
 	{
-		if (!_identical(a, b)) fail();
-		else tail(c);
-	}
-	CapturedCont not_identical(LVar a, LVar b, CapturedCont c)
-	{
-		if (_identical(a, b)) fail();
-		else tail(c);
-	}
-	template<typename T>
-	void identical(LVar a, LVar b, T c, Params l)
-	{
-		if (!_identical(a, b)) fail();
-		else tail(c,l);
-	}
-	template<typename T>
-	CapturedCont not_identical(LVar a, LVar b, T c, Params l)
-	{
-		if (_identical(a, b)) fail();
-		else tail(c,l);
+		if (_identical(a, b)) return fail();
+		return c;
 	}
 };
-//allows you to use failure as a continuation
-void fail(Search &s)
+
+Trampoline _restore_unified(Search &s, LVar a_save, LValue restore_a)
 {
-	s.tail(s._for_fail());
+	a_save->value = restore_a; 
+	return s.fail();
 }
-const CapturedCont Search::captured_fail = (Continuation)fail_fn;
 
 bool _unify(Search &s, LVar &a, LVar&b)
 {
@@ -1179,30 +1308,21 @@ bool _unify(Search &s, LVar &a, LVar&b)
 	if (strict_equals(a_target, b_target)) return true; //test strict equals on uninstanciated {}{}{}
 	if (a_target.uninstanciatedp() && b_target.uninstanciatedp())
 	{
-		CapturedVar<LValue> restore_a = a_target.get()->value;
+		LValue restore_a = a_target.get()->value;
 		a_target.chain(b_target);
-		CapturedVar<LVar> a_save = a_target;
-		CapturedCont undo;
-		*undo = [=](Search &s) { (*a_save)->value = *restore_a; s.fail();};
-		s.save_undo(undo);
+		s.save_undo(trampoline(_restore_unified, s, a_target, restore_a));
 		return true;
 	}
 	else if (a_target.uninstanciatedp()) {
-		CapturedVar<LValue> restore_a = a_target.get()->value;
+		LValue restore_a = a_target.get()->value;
 		a_target->value= b_target.get()->value;
-		CapturedVar<LVar> a_save = a_target;
-		CapturedCont undo;
-		*undo = [=](Search &s) { (*a_save)->value = *restore_a; s.fail();};
-		s.save_undo(undo);
+		s.save_undo(trampoline(_restore_unified, s, a_target, restore_a));
 		return true;
 	}
 	else if (b_target.uninstanciatedp()) {
-		CapturedVar<LValue> restore_b = b_target.get()->value;
+		LValue restore_b = b_target.get()->value;
 		b_target->value = a_target.get()->value;
-		CapturedVar<LVar> b_save = b_target;
-		CapturedCont undo;
-		*undo = [=](Search &s) { (*b_save)->value = *restore_b; s.fail();};
-		s.save_undo(undo);
+		s.save_undo(trampoline(_restore_unified, s, b_target, restore_b));
 		return true;
 	}
 	if (a_target.pairp() && b_target.pairp())
@@ -1227,95 +1347,154 @@ bool _identical(LVar &a, LVar&b)
 	return false;
 }
 
-void unify_tests(Search &s)
+//rolling my own so that I can be sure that iterators are preserved across deletes.
+enum InsertHeadType { ClauseHead };
+enum InsertTailType { ClauseTail };
+
+
+struct DynamicClauseBase
 {
-	CLVar A, B, C,D,E,F,G;
-	CLVar hello("hello"), one(1), willBeHello, willBeOne,l1(L(*A,"hello",*B,L(*one,*C,*hello),*F));
+	DynamicClauseBase * next;
+	DynamicClauseBase * prev;
+
+	bool empty() const { return next == this; }
+	DynamicClauseBase() { next = prev = this; }
+	DynamicClauseBase(InsertHeadType, DynamicClauseBase *root) : next(root->next), prev(root) { root->next = this; next->prev = this; }
+	DynamicClauseBase(InsertTailType, DynamicClauseBase *root) : next(root), prev(root->prev) { root->prev = this; prev->next = this; }
+
+	virtual ~DynamicClauseBase() { next->prev = prev; prev->next = next; }
+
+};
+template <typename T>
+struct DynamicClause :public DynamicClauseBase
+{
+	T value;
+
+	DynamicClause(InsertHeadType i, DynamicClauseBase &root, T f) : DynamicClauseBase(i, &root), value(f) { }
+	DynamicClause(InsertTailType i, DynamicClauseBase &root, T f) : DynamicClauseBase(i, &root), value(f) { }
+};
+
+//typedef std::function<void(Search&,)> DynamicCont;
+
+// T should be CapturedLambda(function...)
+template <typename T>
+class DynamicPredicate {
+
+	DynamicClauseBase root;
+public:
+	DynamicPredicate() :root(ClauseRoot) {}
+	DynamicClauseBase * asserta(T f)
+	{
+		return new DynamicClause<T>(ClauseHead, root, f);
+	}
+	DynamicClauseBase * assertz(T f)
+	{
+		return new DynamicClause<T>(ClauseTail, root, f);
+	}
+	void retract(DynamicClauseBase *c)
+	{
+		delete c;
+	}
+	void retract_all()
+	{
+		while (root.next != &root) delete root.next;
+	}
+//	void operator () (Search &s, Params params)
+//	{
+//		if (root.empty()) return;
+//		CapturedVar<int> snip_pos = s.snip_start();
+//		CapturedVar<DynamicClause<T> *>current = root.next;
+
+//	}
+};
+
+Trampoline unify_tests(Search &s)
+{
+	LVar A, B, C,D,E,F,G;
+	LVar hello("hello"), one(1), willBeHello, willBeOne,l1(L(A,"hello",B,L(one,C,hello),F));
 	CapturedCont c,d,e,f,g,h,i,j,k,l;
 	*c = [=](Search &s)
 	{ 
-		cout << *hello <<"?="<< *willBeHello << endl;
-		s.identical(1, *one, d);
+		cout << hello <<"?="<< willBeHello << endl;
+		return s.identical(1, one, trampoline(d,s));
 	};
 	*d = [=](Search &s) { 
-		cout << *one << "?=" << *willBeOne << endl;
+		cout << one << "?=" << willBeOne << endl;
 		s.alt(f);
-		s.identical(*hello, "hello", e);
+		return s.identical(hello, "hello", trampoline(e,s));
 	};
 	*e = [=](Search &s) { 
 		cout << "compare with string succeeded" << endl;
 		s.alt(g);
-		s.identical(*F, *G, h);
+		return s.identical(F, G, trampoline(h,s));
 
 	};
-	*f = [=](Search &s) { cout << "compare with string failed" << endl;};
+	*f = [=](Search &s) { cout << "compare with string failed" << endl; return end_search; };
 	*g = [=](Search &s) 
 	{ 
 		cout << "unlike compare with vars did the right thing" << endl;
 		s.alt(i);
-		s.unify(*l1, L("Say", *D, "there", L(*E, 2, "hello"), *G),j);
+		return s.unify(l1, L("Say", D, "there", L(E, 2, "hello"), G),trampoline(j,s));
 	};
-	*h = [=](Search &s) { cout << "unlike compare with vars did the wrong thing" << endl;};
-	*i = [=](Search &s) { cout << "list unify failed" << *A << " " << *D << " " << *B << " " << *E << " " << *C << endl;};
-	*j = [=](Search &s) { s.alt(l); s.identical(*F,*G,k);};
-	*k = [=](Search &s) { cout << "list unify: " <<*A<<" "<<*D<<" "<<*B<<" "<<*E<<" "<<*C<<" "<<*F<<" "<<*G<< endl;};
-	*l = [=](Search &s) { cout << "var unify failed" << endl;};
+	*h = [=](Search &s) { cout << "unlike compare with vars did the wrong thing" << endl; return end_search; };
+	*i = [=](Search &s) { cout << "list unify failed" << A << " " << D << " " << B << " " << E << " " << C << endl; return end_search; };
+	*j = [=](Search &s) { s.alt(l); return s.identical(F,G,trampoline(k,s));};
+	*k = [=](Search &s) { cout << "list unify: " <<A<<" "<<D<<" "<<B<<" "<<E<<" "<<C<<" "<<F<<" "<<G<< endl; return end_search; };
+	*l = [=](Search &s) { cout << "var unify failed" << endl; return end_search; };
 
 
-	s.unify(*hello, *willBeHello,c);
+	return s.unify(hello, willBeHello,trampoline(c,s));
 }
 //oops, the return value could be nixed by stack clean exception
 //but it worked when I made it always throw... {}{}{} WHY DOES IT WORK?
 //OH it works because it doesn't use the search until AFTER it returns the value
-CapturedCont stream1(CapturedVar<int> m, CapturedCont c)
+Trampoline stream1(Search &s, CapturedVar<int> m, Trampoline c)
 {
-	CapturedVar<int> n(0);
-	CapturedCont rest;
-	UncountedCont rest_uncounted = rest;
+	CapturedLambda(Search &, int) rest;
+	UncountedLambda(Search &, int) rest_uncounted = rest;
 
 
-	*rest = [=](Search &s)
+	*rest = [=](Search &s, int n)
 	{ 
-		*n = *n + 1;
-		if (*n == 10) {
-			s.fail();
+		n = n + 1;
+		if (n == 10) {
+			return s.fail();
 		}
 		else {
-			s.alt(rest_uncounted);
+			s.alt(trampoline(rest_uncounted,s,n));
+			*m = n;
 //			cout << "n is " << *n << endl;
-			*m = *n;
-			s.tail(c);
+			return c;
 		}
 	};
 	cout << rest.get()->use_count() << endl;
-	return rest;
+	return trampoline(rest,s,0);
 }
 
 
 //Note it's probably cheaper to pass a CapturedCont than a Continuation
-CapturedCont stream2(CapturedVar<int> m, CapturedCont c)
+Trampoline stream2(Search &s, CapturedVar<int> m, Trampoline c)
 {
-	CapturedVar<int> n(0);
-	CapturedCont rest;
-	UncountedCont rest_uncounted = rest;
+	CapturedLambda(Search &, int) rest;
+	UncountedLambda(Search &, int) rest_uncounted = rest;
 
-	*rest = [=](Search &s)
+	*rest = [=](Search &s, int n)
 	{
-		*n += 1;
-		if (*n == 4) {
-			s.fail();
+		n += 1;
+		if (n == 4) {
+			return s.fail();
 		}
 		else {
-			s.alt(rest_uncounted);
+			s.alt(trampoline(rest_uncounted,s,n));
 //			cout << "m is " << *n * *n << endl;
-			*m = *n * *n;
-			s.tail(c);
+			*m = n * n;
+			return c;
 		}
 	};
-	return rest;
+	return trampoline(rest,s,0);
 }
 
-void AmbTest(Search &s)
+Trampoline AmbTest(Search &s)
 {
 	CapturedVar<int> n, m;
 	CapturedCont c1, c2, c3;
@@ -1323,20 +1502,21 @@ void AmbTest(Search &s)
 	combine_refs(c1, c2, c3);
 
 	//note it can't safely use Search inside of functions that return a value
-	*c1 = [=](Search &s) { s.tail(stream1(n,c2_u)); };
-	*c2 = [=](Search &s) { s.tail(stream2(m,c3_u)); };
+	*c1 = [=](Search &s) { return stream1(s, n, trampoline(c2_u, s)); };
+	*c2 = [=](Search &s) { return stream2(s,m,trampoline(c3_u, s)); };
 	*c3 = [=](Search &s)
 	{
-		if (*n != *m) s.fail();
+		if (*n != *m) return s.fail();
 		else {
 			s.results.insert_or_assign("n", *n);
 			s.results.insert_or_assign("m", *m);
+			return end_search;
 		}
 	};
 	cout << c1.get()->use_count() << endl;
 	cout << c2.get()->use_count() << endl;
 	cout << c3.get()->use_count() << endl;
-	s.tail(c1);
+	return trampoline(c1,s);
 }
 
 #define OUT_OS_TYPE(TYPE) if (v.type() == typeid(TYPE)) { os << any_cast<TYPE>(v); } else
@@ -1395,13 +1575,12 @@ end
 return loop(C,1)
 end
 */
-void QueenRow(Search &s, Params params)// {int row}
+Trampoline QueenRow(Search &s, int ru)// {int row}
 {
-	auto p = params.begin();
+	//CapturedVar<int> r = ru;
 	CapturedCont c;
-	CapturedVar<int> r = any_cast<int>(p[0]);
-	CapturedTailWParams loop;
-	UncountedTailWParams loopu = loop;
+	CapturedLambda(Search &, int,int) loop;
+	UncountedLambda(Search &,int,int) loopu = loop;
 
 //	cout << "r = " << *r << endl;
 
@@ -1410,171 +1589,104 @@ void QueenRow(Search &s, Params params)// {int row}
 		cout << "Solution: ";
 		for (int y = 0;y < QUEENS;++y) cout << rowsx[y] << ' ';
 		cout << endl;
+		return end_search;
 	};
-	*loop = [=](Search &s, Params params)
+	*loop = [=](Search &s, int  n, int r)
 	{
-		auto p = params.begin();
-		CapturedVar<int> nu = any_cast<int>(p[0]);
-		UncountedCont loop_restu(CombineRef,loopu);
+		//CapturedVar<int> nu = n;
+		UncountedLambda(Search &, int, int) loop_restu(CombineRef,loopu);
+
 		
-		*loop_restu = [=](Search &s) { s.tail(loopu, { *nu + 1 }); };
-		if (*nu <= QUEENS) {
-			s.alt(loop_restu);
-			if (!distinct_from_all(*nu, *r)) s.fail();
+		*loop_restu = [=](Search &s, int n,int r) { return trampoline(loopu,s, n + 1, r ); };
+		if (n <= QUEENS) {
+			s.alt(trampoline(loop_restu,s,n,r));
+			if (!distinct_from_all(n, r)) return s.fail();
 			else {
-				if (*r < QUEENS) s.tail(QueenRow, { *r + 1 });
-				else s.tail(c);
+				if (r < QUEENS) return trampoline(QueenRow,s, r + 1 );
+				else return trampoline(c, s);
 			}
-		}else s.fail();
+		}else return s.fail();
 	};
-	s.tail(loop, { 1 });
+	return trampoline(loop, s, 1 , ru);
 }
 
 //verb([eats | O], O, v(eats)).
 //verb([plays with | O], O, v(plays with)).
-void verb(Search &s, Params params)
+Trampoline verb(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
-	auto p = params.begin();
-	CapturedCont c;
-	c = any_cast<CapturedCont>(p[0]);
 	LVar O;
-	LVar X = any_cast<LVar>(p[1]),
-		Y = any_cast<LVar>(p[2]),
-		Z = any_cast<LVar>(p[3]);
 
 	CapturedCont rest;
-	*rest = [=](Search &s) { s.unify(L(X, Y, Z), L(L("plays","with", DOT, O), O, L("v", "plays", "with")), c); };
+	*rest = [=](Search &s) { return s.unify(L(X, Y, Z), L(L("plays","with", DOT, O), O, L("v", "plays", "with")), c); };
 	s.alt(rest);
-	s.unify(L(X, Y, Z), L(L("eats", DOT, O), O, L("v", "eats")), c);
+	return s.unify(L(X, Y, Z), L(L("eats", DOT, O), O, L("v", "eats")), c);
 }
 
 
 //noun([bat | O], O, n(bat)).
 //noun([cat | O], O, n(cat)).
 
-void noun(Search &s, Params params)
+Trampoline noun(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
-	auto p = params.begin();
-	CapturedCont c;
-	c = any_cast<CapturedCont>(p[0]);
 	LVar O;
-	LVar X = any_cast<LVar>(p[1]),
-		Y = any_cast<LVar>(p[2]),
-		Z = any_cast<LVar>(p[3]);
 
 	CapturedCont rest;
-	*rest = [=](Search &s) { s.unify(L(X, Y, Z), L(L("cat", DOT, O), O, L("n","cat")),c); };
+	*rest = [=](Search &s) { return s.unify(L(X, Y, Z), L(L("cat", DOT, O), O, L("n","cat")),c); };
 	s.alt(rest);
-	s.unify(L(X, Y, Z), L(L("bat", DOT, O), O, L("n", "bat")),c);
+	return s.unify(L(X, Y, Z), L(L("bat", DOT, O), O, L("n", "bat")),c);
 }
 
 //det([the | O], O, d(the)).
 //det([a | O], O, d(a)).
-void det(Search &s, Params params)
+Trampoline det(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
-	auto p = params.begin();
-	CapturedCont c;
-	c = any_cast<CapturedCont>(p[0]);
 	LVar O;
-	LVar X = any_cast<LVar>(p[1]),
-		Y = any_cast<LVar>(p[2]),
-		Z = any_cast<LVar>(p[3]);
 
 	CapturedCont rest;
-	*rest = [=](Search &s) { s.unify(L(X, Y, Z), L(L("a", DOT, O), O, L("d", "a")), c); };
+	*rest = [=](Search &s) { return s.unify(L(X, Y, Z), L(L("a", DOT, O), O, L("d", "a")), c); };
 	s.alt(rest);
-	s.unify(L(X, Y, Z), L(L("the", DOT, O), O, L("d", "the")), c);
+	return s.unify(L(X, Y, Z), L(L("the", DOT, O), O, L("d", "the")), c);
 }
 //noun_phrase(A,B,np(D,N)) :- det(A,C,D), noun(C,B,N).
-void noun_phrase(Search &s, Params params)
+Trampoline noun_phrase(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
-	auto p = params.begin();
-	CapturedCont c;
-	c = any_cast<CapturedCont>(p[0]);
 	LVar A, B, C, D, N;
-	LVar X = any_cast<LVar>(p[1]),
-		Y = any_cast<LVar>(p[2]),
-		Z = any_cast<LVar>(p[3]);
 	CapturedCont r1, r2;
 
-	*r1 = [=](Search &s) { s.tail(det, { r2,A,C,D }); };
-	*r2 = [=](Search &s) { s.tail(noun, { c,C,B,N }); };
-	s.unify(L(X, Y, Z), L(A, B, L("np", D, N)), r1);
+	*r1 = [=](Search &s) { return trampoline(det, s, trampoline(r2,s),A,C,D ); };
+	*r2 = [=](Search &s) { return trampoline(noun, s, c,C,B,N ); };
+	return s.unify(L(X, Y, Z), L(A, B, L("np", D, N)), trampoline(r1,s));
 }
 
 //verb_phrase(A,B,vp(V,NP)):- verb(A,C,V), noun_phrase(C,B,NP).
-void verb_phrase(Search &s, Params params)
+Trampoline verb_phrase(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
-	auto p = params.begin();
-	CapturedCont c;
-	c = any_cast<CapturedCont>(p[0]);
 	LVar  A,B,C,V,NP;
-	LVar X = any_cast<LVar>(p[1]),
-		Y = any_cast<LVar>(p[2]),
-		Z = any_cast<LVar>(p[3]);
 	CapturedCont r1,r2;
 
-	*r1 = [=](Search &s) { s.tail(verb, { r2,A,C,V }); };
-	*r2 = [=](Search &s) { s.tail(noun_phrase, { c,C,B,NP }); };
-	s.unify(L(X,Y,Z),L(A,B,L("vp",V,NP)),r1 );
+	*r1 = [=](Search &s) { return trampoline(verb, s, trampoline(r2,s),A,C,V); };
+	*r2 = [=](Search &s) { return trampoline(noun_phrase, s, c,C,B,NP); };
+	return s.unify(L(X,Y,Z),L(A,B,L("vp",V,NP)), trampoline(r1,s) );
 }
 //sentence(A, B, s(NP, VP)) :-noun_phrase(A, C, NP), verb_phrase(C, B, VP).
-void sentence(Search &s, Params params)
+Trampoline sentence(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
-	auto p = params.begin();
-	CapturedCont c;
-	c = any_cast<CapturedCont>(p[0]);
 	LVar  A, B, C, VP, NP;
-	LVar X = any_cast<LVar>(p[1]),
-		Y = any_cast<LVar>(p[2]),
-		Z = any_cast<LVar>(p[3]);
 	CapturedCont r1, r2;
 
-	*r1 = [=](Search &s) { s.tail(noun_phrase, { r2,A,C,NP }); };
-	*r2 = [=](Search &s) { s.tail(verb_phrase, { c,C,B,VP }); };
-	s.unify(L(X, Y, Z), L(A, B, L("s", NP, VP)), r1);
+	*r1 = [=](Search &s) { return trampoline(noun_phrase, s, trampoline(r2,s),A,C,NP ); };
+	*r2 = [=](Search &s) { return trampoline(verb_phrase, s, c,C,B,VP ); };
+	return s.unify(L(X, Y, Z), L(A, B, L("s", NP, VP)), trampoline(r1,s));
 }
 
-void gen_sentences(Search &s)
+Trampoline gen_sentences(Search &s)
 {
 	LVar T, _, S;
 	CapturedCont display;
-	*display = [=](Search &s) { cout << "sentence: " << T << endl << "parse: " << S << endl; };
-	s.tail(sentence, { display,T,_,S });
+	*display = [=](Search &s) { cout << "sentence: " << T << endl << "parse: " << S << endl; return end_search; };
+	return trampoline(sentence, s, trampoline(display,s),T,_,S );
 }
-void QueenRow2(Search &s, Params params)// {int row}
-{
-	auto p = params.begin();
-	CapturedCont c;
-	CapturedVar<int> r = any_cast<int>(p[0]);
-	CapturedTailWParams loop;
-	UncountedTailWParams loopu = loop;
 
-	//	cout << "r = " << *r << endl;
-
-	*c = [=](Search &s)
-	{
-		cout << "Solution: ";
-		for (int y = 0;y < QUEENS;++y) cout << rowsx[y] << ' ';
-		cout << endl;
-	};
-	*loop = [=](Search &s, Params params)
-	{
-		auto p = params.begin();
-		CapturedVar<int> nu = any_cast<int>(p[0]);
-
-		if (*nu <= QUEENS) {
-			s.alt(loopu, { *nu + 1 });
-			if (!distinct_from_all(*nu, *r)) s.fail();
-			else {
-				if (*r < QUEENS) s.tail(QueenRow, { *r + 1 });
-				else s.tail(c);
-			}
-		}
-		else s.fail();
-	};
-	s.tail(loop, { 1 });
-}
 
 
 int main()
@@ -1611,7 +1723,7 @@ int main()
 	while (g());
 
 
-	Search q(QueenRow2, { 1 });
+	Search q(QueenRow,  1 );
 	q();
 	Search u(unify_tests);
 	u();
