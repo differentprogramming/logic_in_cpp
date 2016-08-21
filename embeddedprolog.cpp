@@ -17,6 +17,8 @@
 #include <map>
 #include <stdint.h>
 
+//#define OWN_MEMORY_MANAGEMENT
+
 using std::ostream;
 using std::cout;
 using std::endl;
@@ -53,8 +55,8 @@ class Search;
 //and this one would have to be captured by reference. 
 //The other times it has to be passed are in direct calls not continuations
 typedef std::function<void(Search &)> Continuation;
-typedef std::initializer_list<boost::any> Params;
-typedef std::function<void(Search&, Params)> TailWithParams;
+//typedef std::initializer_list<boost::any> Params;
+//typedef std::function<void(Search&, Params)> TailWithParams;
 
 template<typename T>
 class CapturedVar;
@@ -95,6 +97,36 @@ void free_to_freelist(void *v)
 }
 #endif
 
+#define DECLARE_MEM_MANAGEMENT(name)			\
+static intptr_t blocksize;						\
+static FreeList *free_list;						\
+void * operator new (size_t size)				\
+{												\
+	assert(size == sizeof(name));				\
+	return allocate_from_freelist<name>();		\
+}												\
+void * operator new (size_t, void *place)		\
+{												\
+	return place;								\
+}												\
+void operator delete (void *, void *) {}		\
+												\
+void operator delete (void * mem)				\
+{												\
+	free_to_freelist<name>(mem);				\
+}
+
+
+#define DEFINE_MEM_MANAGEMENT(name)	\
+intptr_t name::blocksize = intptr_t(((sizeof(name) + 15)>>4)<<4); \
+FreeList *name::free_list = nullptr;
+
+#define DEFINE_MEM_MANAGEMENT_T(name,...)	\
+template <__VA_ARGS__>\
+intptr_t name::blocksize = intptr_t(((sizeof(name) + 15)>>4)<<4); \
+template <__VA_ARGS__>\
+FreeList *name::free_list = nullptr;
+
 //very simple not thread safe class compatible with intrusive_ptr
 //the point of this class is that you can define both counted and eternal/singleton objects
 //and the built in class doesn't have that
@@ -115,32 +147,8 @@ public:
 	virtual ~SimpleRefCount()
 	{}
 
-#ifdef OWN_MEMORY_MANAGEMENT
-	static intptr_t blocksize;
-	static FreeList *free_list;
-	void * operator new (size_t size)
-	{
-		k
-			assert(size == sizeof(SimpleRefCount));
-		return allocate_from_freelist<SimpleRefCount>();
-	}
-	void * operator new (size_t, void *place)
-	{
-		return place;
-	}
-	void operator delete (void *, void *) {}
-
-	void operator delete (void * mem)
-	{
-		free_to_freelist<SimpleRefCount>(mem);
-	}
-#endif
 };
 
-#ifdef OWN_MEMORY_MANAGEMENT
-intptr_t SimpleRefCount::blocksize = intptr_t((sizeof(SimpleRefCount) + sizeof(SimpleRefCount) - 1)&~((sizeof(SimpleRefCount) + sizeof(SimpleRefCount) - 1) >> 1));
-FreeList *SimpleRefCount::free_list = nullptr;
-#endif
 
 void intrusive_ptr_add_ref(SimpleRefCount *p)
 {
@@ -161,6 +169,7 @@ public:
 	virtual ~TrampolineLetter() {}
 	virtual intrusive_ptr<TrampolineLetter> execute() = 0;
 	virtual bool isNull() const { return false; }
+	virtual void _for_retargetting(void *n) { }
 };
 
 
@@ -189,6 +198,7 @@ class Trampoline1 : public TrampolineLetter
 public:
 	Trampoline1(const T &f, const P1 &_p1) :fn(f), p1(_p1) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 
 template <typename T, typename P1, typename P2>
@@ -200,6 +210,7 @@ class Trampoline2 : public TrampolineLetter
 public:
 	Trampoline2(const T &f, const P1 &_p1, const P2 &_p2) :fn(f), p1(_p1), p2(_p2) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 
 template <typename T, typename P1, typename P2, typename P3>
@@ -212,6 +223,7 @@ class Trampoline3 : public TrampolineLetter
 public:
 	Trampoline3(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3) :fn(f), p1(_p1), p2(_p2), p3(_p3) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 
 template <typename T, typename P1, typename P2, typename P3, typename P4>
@@ -225,6 +237,7 @@ class Trampoline4 : public TrampolineLetter
 public:
 	Trampoline4(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
@@ -239,6 +252,7 @@ class Trampoline5 : public TrampolineLetter
 public:
 	Trampoline5(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
 class Trampoline6 : public TrampolineLetter
@@ -253,6 +267,7 @@ class Trampoline6 : public TrampolineLetter
 public:
 	Trampoline6(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
@@ -269,6 +284,7 @@ class Trampoline7 : public TrampolineLetter
 public:
 	Trampoline7(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6, p7); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
@@ -286,6 +302,7 @@ class Trampoline8 : public TrampolineLetter
 public:
 	Trampoline8(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7, const P8 &_p8) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7), p8(_p8) {}
 	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6, p7, p8); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
 };
 
 /* CombinableRefCount is a replacement for intrusive_ref_counter<_, boost::thread_unsafe_counter >
@@ -410,6 +427,7 @@ template <typename T>
 class CapturedVarLetter :public CombinableRefCount
 {
 public:
+	typedef T type;
 	T value;
 	CapturedVarLetter(const T& a) :value(a) {}
 	CapturedVarLetter() {}
@@ -1059,7 +1077,7 @@ ostream & operator<<(ostream & os, const LVar &v)
 }
 
 
-typedef std::vector<boost::any> AnyValues;
+//typedef std::vector<boost::any> AnyValues;
 
 enum DotType { DOT };
 LogicalVariant NilVariant(NIL);
@@ -1348,65 +1366,186 @@ bool _identical(LVar &a, LVar&b)
 }
 
 //rolling my own so that I can be sure that iterators are preserved across deletes.
+enum ClauseRootType { ClauseRoot };
 enum InsertHeadType { ClauseHead };
 enum InsertTailType { ClauseTail };
 
 
-struct DynamicClauseBase
+//while it's not strictly necessary, this is properly garbage collected so the programmer
+//is freed from designing around lifetime issues.  If you delete a DynamicPredicate while
+//its clauses are running, nothing will break;
+struct DynamicClauseBase : public SimpleRefCount
 {
-	DynamicClauseBase * next;
-	DynamicClauseBase * prev;
+	intrusive_ptr<DynamicClauseBase> next; 
+	DynamicClauseBase* prev;
 
+	virtual bool is_root() const { return true; }
 	bool empty() const { return next == this; }
-	DynamicClauseBase() { next = prev = this; }
-	DynamicClauseBase(InsertHeadType, DynamicClauseBase *root) : next(root->next), prev(root) { root->next = this; next->prev = this; }
-	DynamicClauseBase(InsertTailType, DynamicClauseBase *root) : next(root), prev(root->prev) { root->prev = this; prev->next = this; }
+	DynamicClauseBase(ClauseRootType) : SimpleRefCount(SimpleRefCount::SINGLETON)
+	{
+		cout << "creating root " << this << endl;
+		next = prev = this; 
+	}
+	DynamicClauseBase(InsertHeadType, DynamicClauseBase *root) : next(root->next), prev(root) 
+	{ 
+		cout << "creating at head " << this << endl;
+		root->next = this; next->prev = this;
+	}
+	DynamicClauseBase(InsertTailType, DynamicClauseBase *root) : next(root), prev(root->prev) 
+	{ 
+		cout << "creating at tail " << this << endl;
+		root->prev = this; prev->next = this;
+	}
 
-	virtual ~DynamicClauseBase() { next->prev = prev; prev->next = next; }
+	void unlink() 
+	{ 
+		if (next != nullptr) next->prev = prev; 
+		if (prev != nullptr) prev->next = next;
+		next = nullptr;
+		prev = nullptr;
+	}
+	virtual ~DynamicClauseBase() 
+	{ 
+		cout << "deleting " << this << endl;
+		unlink();  
+	}
 
 };
 template <typename T>
-struct DynamicClause :public DynamicClauseBase
+struct DynamicClauseT :public DynamicClauseBase
 {
 	T value;
 
-	DynamicClause(InsertHeadType i, DynamicClauseBase &root, T f) : DynamicClauseBase(i, &root), value(f) { }
-	DynamicClause(InsertTailType i, DynamicClauseBase &root, T f) : DynamicClauseBase(i, &root), value(f) { }
+	virtual bool is_root() const { return false; }
+
+	DynamicClauseT(InsertHeadType i, DynamicClauseBase &root, T f) : DynamicClauseBase(i, &root), value(f) { }
+	DynamicClauseT(InsertTailType i, DynamicClauseBase &root, T f) : DynamicClauseBase(i, &root), value(f) { }
 };
 
+typedef intrusive_ptr<DynamicClauseBase> DynamicClause;
+
 //typedef std::function<void(Search&,)> DynamicCont;
+
+template <typename T> struct gimme;
+
+template <template <typename> typename TT, typename R, typename...Args>
+struct gimme<TT<R(Args...)>> {
+	using type = R(Args...);
+};
+
 
 // T should be CapturedLambda(function...)
 template <typename T>
 class DynamicPredicate {
-
+protected:
 	DynamicClauseBase root;
+
+	static Trampoline next_clause(Search &s, Trampoline last_template, Trampoline final_continuation, intrusive_ptr<DynamicClauseT<T>> last_ptr, T *stored_fn)
+	{
+		if (last_ptr->next->is_root()) return final_continuation;
+		last_ptr = static_cast<DynamicClauseT<T> *>(last_ptr->next.get());
+		*stored_fn = last_ptr.value;
+		s.alt(next_clause, last_template, final_continuation, last_ptr, stored_fn);
+		return last_template;
+	}
+
+	Trampoline _apply(Search&s, Trampoline initial, Trampoline final_continuation)
+	{
+		intrusive_ptr<DynamicClauseT<T>> first = static_cast<DynamicClauseT<T>*>(root->next);
+		T * stored_fn=nullptr;
+		initial->_for_retargetting(&stored_fn);
+		assert(stored_fn != nullptr);
+		s.alt(template(next_clause<T>, s, initial, final_continuation, first, stored_fn));
+		return initial;
+	}
 public:
 	DynamicPredicate() :root(ClauseRoot) {}
-	DynamicClauseBase * asserta(T f)
-	{
-		return new DynamicClause<T>(ClauseHead, root, f);
+	~DynamicPredicate() { 
+		root.next->prev = nullptr;
+		root.next = nullptr; //break chain		
 	}
-	DynamicClauseBase * assertz(T f)
+	
+
+	DynamicClause asserta(T f)
 	{
-		return new DynamicClause<T>(ClauseTail, root, f);
+		return new DynamicClauseT<T>(ClauseHead, root, f);
 	}
-	void retract(DynamicClauseBase *c)
+	DynamicClause asserta(typename T::element_type f)
 	{
-		delete c;
+		return asserta(T(f));
+	}
+	DynamicClause asserta(typename gimme<typename T::element_type::type>::type f)
+	{
+		return asserta(T(f));
+	}
+	DynamicClause assertz(T f)
+	{
+		return new DynamicClauseT<T>(ClauseTail, root, f);
+	}
+	DynamicClause assertz(typename T::element_type f)
+	{
+		return assertz(T(f));
+	}
+	DynamicClause assertz(typename gimme<typename T::element_type::type>::type f)
+	{
+		return assertz(T(f));
+	}
+
+	void retract(DynamicClause c)
+	{
+		c->unlink();
 	}
 	void retract_all()
 	{
-		while (root.next != &root) delete root.next;
+		root->next->prev = nullptr;
+		root->next = &root; //break chain	
+		root->prev = &root;
 	}
-//	void operator () (Search &s, Params params)
-//	{
-//		if (root.empty()) return;
-//		CapturedVar<int> snip_pos = s.snip_start();
-//		CapturedVar<DynamicClause<T> *>current = root.next;
+	
+	Trampoline operator () (Search &s,Trampoline c)
+	{
+		if (root.empty()) return s.fail();
+		int snip = s.snip_start();
+		return _appy(s, template(root->next->value, s, c, snip),c);
+	}
+	template <typename P1>
+	Trampoline operator () (Search &s, Trampoline c, P1 && p1)
+	{
+		if (root.empty()) return s.fail();
+		int snip = s.snip_start();
+		return _appy(s, template(root->next->value, s, c, snip, p1), c);
+	}
+	template <typename P1, typename P2>
+	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2)
+	{
+		if (root.empty()) return s.fail();
+		int snip = s.snip_start();
+		return _appy(s, template(root->next->value, s, c, snip, p1,p2), c);
+	}
+	template <typename P1, typename P2, typename P3>
+	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2, P3 && p3)
+	{
+		if (root.empty()) return s.fail();
+		int snip = s.snip_start();
+		return _appy(s, template(root->next->value, s, c, snip, p1, p2,p3), c);
+	}
+	template <typename P1, typename P2, typename P3, typename P4>
+	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2, P3 && p3, P4 && p4)
+	{
+		if (root.empty()) return s.fail();
+		int snip = s.snip_start();
+		return _appy(s, template(root->next->value, s, c, snip, p1, p2, p3,p4), c);
+	}
+	template <typename P1, typename P2, typename P3, typename P4, typename P5>
+	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5)
+	{
+		if (root.empty()) return s.fail();
+		int snip = s.snip_start();
+		return _appy(s, template(root->next->value, s, c, snip, p1, p2, p3, p4,p5), c);
+	}
 
-//	}
 };
+
 
 Trampoline unify_tests(Search &s)
 {
@@ -1594,12 +1733,12 @@ Trampoline QueenRow(Search &s, int ru)// {int row}
 	*loop = [=](Search &s, int  n, int r)
 	{
 		//CapturedVar<int> nu = n;
-		UncountedLambda(Search &, int, int) loop_restu(CombineRef,loopu);
+//		UncountedLambda(Search &, int, int) loop_restu(CombineRef,loopu);
 
 		
-		*loop_restu = [=](Search &s, int n,int r) { return trampoline(loopu,s, n + 1, r ); };
+//		*loop_restu = [=](Search &s, int n,int r) { return trampoline(loopu,s, n + 1, r ); };
 		if (n <= QUEENS) {
-			s.alt(trampoline(loop_restu,s,n,r));
+			s.alt(trampoline(loopu,s,n+1,r));
 			if (!distinct_from_all(n, r)) return s.fail();
 			else {
 				if (r < QUEENS) return trampoline(QueenRow,s, r + 1 );
@@ -1740,8 +1879,9 @@ int main()
 	LVar D3;D2.chain(A2);
 	cout << "equals tests " << strict_equals(A1, A2) << " " << strict_equals(B1, B3) << " " << strict_equals(C1, C3) << " " << strict_equals(D1, D3) << " " << endl;
 	
+	DynamicPredicate<CapturedLambda(Search &, Trampoline, int, LVar)> dynamic_test;
+	DynamicClause dog, cat, person;
 
-	char temp[100];
-	std::cin >> temp;
+	dog = dynamic_test.asserta([](Search &s, Trampoline c, int cut, LVar animal) { return c; });
 
 }
