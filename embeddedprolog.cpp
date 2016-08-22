@@ -24,7 +24,7 @@ using std::cout;
 using std::endl;
 using std::string;
 using boost::any_cast;
-using boost::intrusive_ref_counter; 
+using boost::intrusive_ref_counter;
 using boost::intrusive_ptr;
 using std::function;
 
@@ -35,7 +35,12 @@ class LVar;
 enum UninstanciatedType { UNINSTANCIATED };
 enum NilType { NIL };
 
-inline ostream & operator<<(ostream & os, const NilType & )
+#define CapturedLambda(...) CapturedVar<std::function<Trampoline (__VA_ARGS__) >>
+#define UncountedLambda(...) UncountedVar<std::function<Trampoline (__VA_ARGS__) >>
+
+
+
+inline ostream & operator<<(ostream & os, const NilType &)
 {
 	os << "Nil";
 	return os;
@@ -160,6 +165,7 @@ void intrusive_ptr_release(SimpleRefCount *p)
 	if (d) delete d;
 }
 
+class Trampoline;
 
 class TrampolineLetter :public SimpleRefCount
 {
@@ -167,166 +173,11 @@ public:
 	TrampolineLetter() {}
 	TrampolineLetter(int i) :SimpleRefCount(i) {}
 	virtual ~TrampolineLetter() {}
-	virtual intrusive_ptr<TrampolineLetter> execute() = 0;
+	virtual Trampoline execute() = 0;
 	virtual bool isNull() const { return false; }
 	virtual void _for_retargetting(void *n) { }
 };
 
-
-template <typename T>
-class Trampoline0 : public TrampolineLetter
-{
-	T fn;
-public:
-	Trampoline0(const T &f) :fn(f) {  }
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(); }
-};
-
-class NullTrampoline : public TrampolineLetter
-{
-public:
-	NullTrampoline() :TrampolineLetter(SimpleRefCount::SINGLETON) { }
-	virtual bool isNull() const { return true; }
-	virtual intrusive_ptr<TrampolineLetter> execute() { return this; }
-};
-
-template <typename T, typename P1>
-class Trampoline1 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-public:
-	Trampoline1(const T &f, const P1 &_p1) :fn(f), p1(_p1) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-
-template <typename T, typename P1, typename P2>
-class Trampoline2 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-	P2 p2;
-public:
-	Trampoline2(const T &f, const P1 &_p1, const P2 &_p2) :fn(f), p1(_p1), p2(_p2) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-
-template <typename T, typename P1, typename P2, typename P3>
-class Trampoline3 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-	P2 p2;
-	P3 p3;
-public:
-	Trampoline3(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3) :fn(f), p1(_p1), p2(_p2), p3(_p3) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-
-template <typename T, typename P1, typename P2, typename P3, typename P4>
-class Trampoline4 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-	P2 p2;
-	P3 p3;
-	P4 p4;
-public:
-	Trampoline4(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-
-template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
-class Trampoline5 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-	P2 p2;
-	P3 p3;
-	P4 p4;
-	P5 p5;
-public:
-	Trampoline5(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
-class Trampoline6 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-	P2 p2;
-	P3 p3;
-	P4 p4;
-	P5 p5;
-	P6 p6;
-public:
-	Trampoline6(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-
-template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
-class Trampoline7 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-	P2 p2;
-	P3 p3;
-	P4 p4;
-	P5 p5;
-	P6 p6;
-	P7 p7;
-public:
-	Trampoline7(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6, p7); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-
-template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
-class Trampoline8 : public TrampolineLetter
-{
-	T fn;
-	P1 p1;
-	P2 p2;
-	P3 p3;
-	P4 p4;
-	P5 p5;
-	P6 p6;
-	P7 p7;
-	P8 p8;
-public:
-	Trampoline8(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7, const P8 &_p8) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7), p8(_p8) {}
-	virtual intrusive_ptr<TrampolineLetter> execute() { return fn(p1, p2, p3, p4, p5, p6, p7, p8); }
-	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
-};
-
-/* CombinableRefCount is a replacement for intrusive_ref_counter<_, boost::thread_unsafe_counter >
-* With the difference that you can combine a bunches of them to share a reference counter.
-* The point of that is to handle the case where a bunch of objects create a cycle of references.
-* Note it is assumed that the organization of this cycle is immutable.
-* Then by combining the counts, a reference to one object is considered a reference to all for the
-* sake of refernce counting.  Only when there are no external links to all of the objects will they
-* be collected.
-* Note it is assumed that the cycle of references either is special cased to not cause the counter
-* to increment, or that all of those increments have been manually decremented out.
-* The class is hard to understand because CombinableRefCount is used in two separate ways by the
-* algorithm and it's just punning that the same code works for both.
-* The main way is that CombinableRefCount is subclassed.  These subclasses can be used just like
-* subclasses of boost::intrusive_ref_counter.
-* However, if combine_refs is called on a list of CombinableRefCount* (or on a list of CapturedVar<T> holding
-* CapturedVarLetter<T> derived from  CombinableRefCount) then a single CombinableRefCount is allocated
-* to hold the combined reference count for all those objects.  Note that this CombinableRefCount is
-* just the raw type, not a subclass.
-* For the first kind, the subclassed version, _forward points at the shared count if there is one
-* and _next makes a list to facilitate deleting the whole set at once.
-* For the second kind, the shared count, _next points to the head of the list of shared objects
-* and _forward isn't used.
-*/
 class CombinableRefCount
 {
 
@@ -388,6 +239,182 @@ public:
 	}
 #endif
 };
+
+template <typename T>
+class CapturedVarLetter;
+
+
+template<typename T>
+class CapturedVar;
+
+class Trampoline : public intrusive_ptr<TrampolineLetter>
+{
+public:
+	Trampoline(const CapturedVar<std::function<Trampoline() >> &);
+
+	Trampoline(TrampolineLetter * v) :intrusive_ptr(v) {}
+
+	Trampoline() :intrusive_ptr() {}
+
+	Trampoline(const Trampoline &o) :intrusive_ptr(o.get()) {}
+
+
+};
+
+template <typename T>
+class Trampoline0 : public TrampolineLetter
+{
+	T fn;
+public:
+	Trampoline0(const T &f) :fn(f) {  }
+	virtual Trampoline execute() { return fn(); }
+};
+
+class NullTrampoline : public TrampolineLetter
+{
+public:
+	NullTrampoline() :TrampolineLetter(SimpleRefCount::SINGLETON) { }
+	virtual bool isNull() const { return true; }
+	virtual Trampoline execute() { return this; }
+};
+
+template <typename T, typename P1>
+class Trampoline1 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+public:
+	Trampoline1(const T &f, const P1 &_p1) :fn(f), p1(_p1) {}
+	virtual Trampoline execute() { return fn(p1); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+
+template <typename T, typename P1, typename P2>
+class Trampoline2 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+public:
+	Trampoline2(const T &f, const P1 &_p1, const P2 &_p2) :fn(f), p1(_p1), p2(_p2) {}
+	virtual Trampoline execute() { return fn(p1, p2); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+
+template <typename T, typename P1, typename P2, typename P3>
+class Trampoline3 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+public:
+	Trampoline3(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3) :fn(f), p1(_p1), p2(_p2), p3(_p3) {}
+	virtual Trampoline execute() { return fn(p1, p2, p3); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4>
+class Trampoline4 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+public:
+	Trampoline4(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4) {}
+	virtual Trampoline execute() { return fn(p1, p2, p3, p4); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
+class Trampoline5 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+public:
+	Trampoline5(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5) {}
+	virtual Trampoline execute() { return fn(p1, p2, p3, p4, p5); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
+class Trampoline6 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+	P6 p6;
+public:
+	Trampoline6(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6) {}
+	virtual Trampoline execute() { return fn(p1, p2, p3, p4, p5, p6); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
+class Trampoline7 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+	P6 p6;
+	P7 p7;
+public:
+	Trampoline7(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7) {}
+	virtual Trampoline execute() { return fn(p1, p2, p3, p4, p5, p6, p7); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+
+template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
+class Trampoline8 : public TrampolineLetter
+{
+	T fn;
+	P1 p1;
+	P2 p2;
+	P3 p3;
+	P4 p4;
+	P5 p5;
+	P6 p6;
+	P7 p7;
+	P8 p8;
+public:
+	Trampoline8(const T &f, const P1 &_p1, const P2 &_p2, const P3 &_p3, const P4 &_p4, const P5 &_p5, const P6 &_p6, const P7 &_p7, const P8 &_p8) :fn(f), p1(_p1), p2(_p2), p3(_p3), p4(_p4), p5(_p5), p6(_p6), p7(_p7), p8(_p8) {}
+	virtual Trampoline execute() { return fn(p1, p2, p3, p4, p5, p6, p7, p8); }
+	virtual void _for_retargetting(void *n) { *static_cast<T **>(n) = &fn; }
+};
+
+/* CombinableRefCount is a replacement for intrusive_ref_counter<_, boost::thread_unsafe_counter >
+* With the difference that you can combine a bunches of them to share a reference counter.
+* The point of that is to handle the case where a bunch of objects create a cycle of references.
+* Note it is assumed that the organization of this cycle is immutable.
+* Then by combining the counts, a reference to one object is considered a reference to all for the
+* sake of refernce counting.  Only when there are no external links to all of the objects will they
+* be collected.
+* Note it is assumed that the cycle of references either is special cased to not cause the counter
+* to increment, or that all of those increments have been manually decremented out.
+* The class is hard to understand because CombinableRefCount is used in two separate ways by the
+* algorithm and it's just punning that the same code works for both.
+* The main way is that CombinableRefCount is subclassed.  These subclasses can be used just like
+* subclasses of boost::intrusive_ref_counter.
+* However, if combine_refs is called on a list of CombinableRefCount* (or on a list of CapturedVar<T> holding
+* CapturedVarLetter<T> derived from  CombinableRefCount) then a single CombinableRefCount is allocated
+* to hold the combined reference count for all those objects.  Note that this CombinableRefCount is
+* just the raw type, not a subclass.
+* For the first kind, the subclassed version, _forward points at the shared count if there is one
+* and _next makes a list to facilitate deleting the whole set at once.
+* For the second kind, the shared count, _next points to the head of the list of shared objects
+* and _forward isn't used.
+*/
 
 #ifdef OWN_MEMORY_MANAGEMENT
 intptr_t CombinableRefCount::blocksize = intptr_t((sizeof(CombinableRefCount) + sizeof(CombinableRefCount) - 1)&~((sizeof(CombinableRefCount) + sizeof(CombinableRefCount) - 1) >> 1));
@@ -500,6 +527,8 @@ FreeList *CapturedVarLetter<T>::free_list = nullptr;
 
 template <typename T>
 class UncountedVar;
+
+class TrampolineLetter;
 
 enum CombineRefType { CombineRef };
 
@@ -628,7 +657,7 @@ std::reference_wrapper<Search> make_counted(Search &o) {
 	return std::ref(o);
 }
 
-template <typename T, typename P1>
+template <typename T>
 inline TrampolineLetter* new_trampoline(T &&f)
 {
 	return new Trampoline0<T>(f);
@@ -677,59 +706,72 @@ inline TrampolineLetter * new_trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&
 
 
 template <typename T>
-intrusive_ptr<TrampolineLetter> trampoline(T &&f)
+Trampoline trampoline(T &&f)
 {
 	return new_trampoline(make_counted(f));
 }
 template <typename T, typename P1>
-intrusive_ptr<TrampolineLetter> trampoline(T &&f, P1 &&p1)
+Trampoline trampoline(T &&f, P1 &&p1)
 {
 	return new_trampoline(make_counted(f), make_counted(p1));
 }
 template <typename T, typename P1, typename P2>
-intrusive_ptr<TrampolineLetter> trampoline(T &&f, P1 &&p1, P2 &&p2)
+Trampoline trampoline(T &&f, P1 &&p1, P2 &&p2)
 {
 	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2));
 }
 template <typename T, typename P1, typename P2, typename P3>
-intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3)
+Trampoline  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3)
 {
 	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3));
 }
 template <typename T, typename P1, typename P2, typename P3, typename P4>
-intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4)
+Trampoline  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4)
 {
 	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4));
 }
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
-intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5)
+Trampoline  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5)
 {
 	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5));
 }
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
-intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6)
+Trampoline  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6)
 {
 	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5), make_counted(p6));
 }
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
-intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7)
+Trampoline  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7)
 {
 	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5), make_counted(p6), make_counted(p7));
 }
 template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
-intrusive_ptr<TrampolineLetter>  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7, P8 &&p8)
+Trampoline  trampoline(T &&f, P1 &&p1, P2 &&p2, P3 &&p3, P4 &&p4, P5 &&p5, P6 &&p6, P7 &&p7, P8 &&p8)
 {
 	return new_trampoline(make_counted(f), make_counted(p1), make_counted(p2), make_counted(p3), make_counted(p4), make_counted(p5), make_counted(p6), make_counted(p7), make_counted(p8));
 }
 
-typedef intrusive_ptr<TrampolineLetter> Trampoline;
+
+
+typedef CapturedLambda(Search &) CapturedCont;
+typedef UncountedLambda(Search &) UncountedCont;
+
+typedef CapturedLambda() Subclause;
+typedef UncountedLambda() UncountedSubclause;
+
+Trampoline::Trampoline(const CapturedVar< std::function< Trampoline() > > &c) :intrusive_ptr(new Trampoline0<CapturedVar< std::function< Trampoline() > > >(c))
+{
+
+}
+
+
 
 Trampoline end_search = new NullTrampoline();
 
 
 //for testing with .which()
 enum LVType {
-	LV_NIL,LV_UNINSTANCIATED,LV_DOUBLE,LV_STRING,LV_LVAR,LV_LIST,LV_CUSTOM,LV_DATA1,LV_DATA2,LV_DATA3,LV_DATA4
+	LV_NIL, LV_UNINSTANCIATED, LV_DOUBLE, LV_STRING, LV_LVAR, LV_LIST, LV_CUSTOM, LV_DATA1, LV_DATA2, LV_DATA3, LV_DATA4
 };
 
 char * const TypeNames[] = { "nil","variable","double","string","var","list","custom","extra data type 1","extra data type 2","extra data type 3","extra data type 4" };
@@ -740,7 +782,7 @@ class LogicalData :public intrusive_ref_counter<LogicalData, boost::thread_unsaf
 public:
 	LVType class_type;
 	void *data;
-	LogicalData(LVType t, void *d) :class_type(t),data(d) {}
+	LogicalData(LVType t, void *d) :class_type(t), data(d) {}
 };
 
 
@@ -750,10 +792,10 @@ typedef boost::flyweight<string> InternedString;
 /*
 Note: difference from Lua version
 boost::variant treats its values as value types, it's not possible to get a reference to the stored value, only a copy
-so when you instanciate an LVar it's not the LVar that can be shared, it's the LVariant inside it. You can't instanciate by 
+so when you instanciate an LVar it's not the LVar that can be shared, it's the LVariant inside it. You can't instanciate by
 setting anLVar = aValue you have to do it as anLVar->value = aValue!
 Anyway the point of LVar in the C++ version is to allow reference counting and simple initialization.
-All the extra levels of indirection are just ways of dealing with C++ limitations consider an LVar to just be a variable and 
+All the extra levels of indirection are just ways of dealing with C++ limitations consider an LVar to just be a variable and
 the LVariant/LValue to be the logical variable inside it.
 */
 
@@ -791,12 +833,12 @@ public:
 	LVar& get_target();
 	LVType target_type();
 	bool nullp() { return target_type() == LV_NIL; }
-	bool listp() { LVType t = target_type(); return t == LV_NIL || t==LV_LIST; }
+	bool listp() { LVType t = target_type(); return t == LV_NIL || t == LV_LIST; }
 	bool pairp() { return target_type() == LV_LIST; }
 	void set_car(LVar &t);
 	void set_cdr(LVar &t);
 
-//	LV_NIL,LV_UNINSTANCIATED,LV_DOUBLE,LV_STRING,LV_LVAR,LV_LIST,LV_CUSTOM,LV_DATA1,LV_DATA2,LV_DATA3,LV_DATA4
+	//	LV_NIL,LV_UNINSTANCIATED,LV_DOUBLE,LV_STRING,LV_LVAR,LV_LIST,LV_CUSTOM,LV_DATA1,LV_DATA2,LV_DATA3,LV_DATA4
 	LVType type() const;
 	bool uninstanciatedp() { return type() == LV_UNINSTANCIATED; }
 	bool doublep() { return type() == LV_DOUBLE; }
@@ -805,10 +847,10 @@ public:
 	void operator = (const LVar &o);
 
 
-	bool ground()  { 
+	bool ground() {
 		LVType t = type();
 		if (t == LV_LIST) return car().ground() && cdr().ground();
-		return t != LV_UNINSTANCIATED; 
+		return t != LV_UNINSTANCIATED;
 	}
 	intrusive_ptr<LCons> as_LCons();
 	double as_double();
@@ -816,7 +858,7 @@ public:
 	intrusive_ptr<LogicalData> as_LogicalValue();
 	LVar car();
 	LVar cdr();
-//	bool operator ==(LVar &);
+	//	bool operator ==(LVar &);
 #ifdef OWN_MEMORY_MANAGEMENT
 	static intptr_t blocksize;
 	static FreeList *free_list;
@@ -825,7 +867,7 @@ public:
 		assert(size == sizeof(LVar));
 		return allocate_from_freelist<LVar>();
 	}
-	void * operator new (size_t , void *place)
+	void * operator new (size_t, void *place)
 	{
 		return place;
 	}
@@ -844,7 +886,7 @@ FreeList *LVar::free_list = nullptr;
 #endif
 
 
-class LogicalVariant:public intrusive_ref_counter<LogicalVariant, boost::thread_unsafe_counter>
+class LogicalVariant :public intrusive_ref_counter<LogicalVariant, boost::thread_unsafe_counter>
 {
 public:
 	LogicalVariant() :value(UNINSTANCIATED) {}
@@ -884,11 +926,11 @@ inline LVar::LVar() : intrusive_ptr<LogicalVariant>(new LogicalVariant(UNINSTANC
 inline LVar::LVar(NilType) : intrusive_ptr<LogicalVariant>(new LogicalVariant(NIL)) { }
 inline LVar::LVar(LValue v) : intrusive_ptr<LogicalVariant>(new LogicalVariant(v)) { }
 inline LVar::LVar(UninstanciatedType) : intrusive_ptr<LogicalVariant>(new LogicalVariant(UNINSTANCIATED)) { }
-inline LVar::LVar(const char * c): intrusive_ptr<LogicalVariant>(new LogicalVariant(InternedString(c))){}
-inline LVar::LVar(double d): intrusive_ptr<LogicalVariant>(new LogicalVariant(d)){}
+inline LVar::LVar(const char * c) : intrusive_ptr<LogicalVariant>(new LogicalVariant(InternedString(c))) {}
+inline LVar::LVar(double d) : intrusive_ptr<LogicalVariant>(new LogicalVariant(d)) {}
 //Note it's not safe to make this chain because it's used as a copy constructor
 inline LVar::LVar(const LVar &v) : intrusive_ptr<LogicalVariant>(v) {}
-inline LVar::LVar(LogicalVariant *v) :intrusive_ptr<LogicalVariant>(v) {}
+inline LVar::LVar(LogicalVariant *v) : intrusive_ptr<LogicalVariant>(v) {}
 inline LVar::LVar(InternedString s) : intrusive_ptr<LogicalVariant>(new LogicalVariant(s)) {}
 inline void LVar::chain(LVar &o) { (*this)->value = o; }
 inline LVType LVar::target_type() { return get_target().type(); }
@@ -913,7 +955,7 @@ struct GetAddress : public boost::static_visitor<>
 LVar& LVar::get_target()
 {
 	LVar *t = this;
-//	GetAddress get_address;
+	//	GetAddress get_address;
 	while ((*t).type() == LV_LVAR) t = &boost::get<LVar>((*t)->value);
 	return *t;
 }
@@ -939,18 +981,18 @@ class LCons :public intrusive_ref_counter<LCons, boost::thread_unsafe_counter>
 {
 
 public:
-	static const char *open_paren; 
+	static const char *open_paren;
 	static const char *close_paren;
 	static const char *display_dot;
 	static const char *display_nil;
 	ostream & _out_rest(ostream & os)
 	{
-/*
-if (nullp(logical_get(self[2]))) then return ' ' .. tostring(logical_get(self[1])) .. close_paren
-elseif (listp(logical_get(self[2]))) then return ' ' .. tostring(logical_get(self[1])) .. logical_get(self[2]):rest_tostring()
-else return ' ' .. tostring(logical_get(self[1])) .. display_dot .. tostring(self[2]) ..close_paren
-end
-*/
+		/*
+		if (nullp(logical_get(self[2]))) then return ' ' .. tostring(logical_get(self[1])) .. close_paren
+		elseif (listp(logical_get(self[2]))) then return ' ' .. tostring(logical_get(self[1])) .. logical_get(self[2]):rest_tostring()
+		else return ' ' .. tostring(logical_get(self[1])) .. display_dot .. tostring(self[2]) ..close_paren
+		end
+		*/
 		if (cdr.nullp()) os << " " << car.get_target() << close_paren;
 		else if (cdr.listp()) {
 			os << " "
@@ -962,7 +1004,7 @@ end
 	}
 	//allocating a new LogicalVariant for NIL allows the cons to be mutable
 	//Maybe we'd prefer immutable
-	LCons(LValue first):car(new LogicalVariant(first)), cdr(new LogicalVariant(NIL)) {}
+	LCons(LValue first) :car(new LogicalVariant(first)), cdr(new LogicalVariant(NIL)) {}
 	LCons(LValue first, LValue rest) :car(new LogicalVariant(first)), cdr(new LogicalVariant(rest)) {}
 	//LCons(LVar& first, DotHolder rest) :car(first), cdr(rest.cdr) {}
 	LCons(LVar && first, DotHolder && rest) :car(first), cdr(rest.cdr.car()) {}
@@ -1001,8 +1043,8 @@ intptr_t LCons::blocksize = intptr_t((sizeof(LCons) + sizeof(LCons) - 1)&~((size
 FreeList *LCons::free_list = nullptr;
 #endif
 
-inline LVar::LVar(LCons *c):intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
-inline LVar::LVar(intrusive_ptr<LCons> &c) :intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
+inline LVar::LVar(LCons *c) :intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
+inline LVar::LVar(intrusive_ptr<LCons> &c) : intrusive_ptr<LogicalVariant>(new LogicalVariant(c)) {}
 intrusive_ptr<LCons> LVar::as_LCons() {
 	return boost::get<intrusive_ptr<LCons> >(get_target()->value);
 }
@@ -1018,7 +1060,7 @@ intrusive_ptr<LogicalData> LVar::as_LogicalValue() {
 LVar LVar::car() { return as_LCons()->car.get_target(); }
 LVar LVar::cdr() { return as_LCons()->cdr.get_target(); }
 
-void LVar::set_car(LVar &t) { return as_LCons()->car.get_target()=t; }
+void LVar::set_car(LVar &t) { return as_LCons()->car.get_target() = t; }
 void LVar::set_cdr(LVar &t) { return as_LCons()->cdr.get_target() = t; }
 
 
@@ -1084,7 +1126,7 @@ LogicalVariant NilVariant(NIL);
 template<typename ... TYPES>
 LVar L()
 {
-	return NIL; 
+	return NIL;
 }
 
 template<typename T, typename ... TYPES>
@@ -1132,7 +1174,7 @@ public:
 	template <>
 	bool operator()(const intrusive_ptr<LCons> & lhs, const intrusive_ptr<LCons> & rhs) const
 	{
-		return & (*lhs) == & (*rhs);
+		return &(*lhs) == &(*rhs);
 	}
 	template <>
 	bool operator()(const intrusive_ptr<LogicalData> & lhs, const intrusive_ptr<LogicalData> & rhs) const
@@ -1148,12 +1190,6 @@ bool strict_equals(LVar &a, LVar &b)
 
 bool _unify(Search &s, LVar &a, LVar&b);
 bool _identical(LVar &a, LVar&b);
-
-#define CapturedLambda(...) CapturedVar<std::function<Trampoline (__VA_ARGS__) >>
-#define UncountedLambda(...) UncountedVar<std::function<Trampoline (__VA_ARGS__) >>
-
-typedef CapturedLambda(Search &) CapturedCont;
-typedef UncountedLambda(Search &) UncountedCont;
 
 
 class Search
@@ -1181,7 +1217,7 @@ class Search
 		failed = false;
 		started = false;
 		amblist.clear();
-		amblist.push_back(AmbRecord( AMB_UNDO,captured_fail));
+		amblist.push_back(AmbRecord(AMB_UNDO, captured_fail));
 	}
 	bool started;
 	Trampoline cont;
@@ -1189,17 +1225,24 @@ class Search
 	Trampoline initial;
 public:
 
-	std::map<const char *,boost::any> results;
+	std::map<const char *, boost::any> results;
 
-	bool running() { return !failed;  }
-	void save_undo(const Trampoline &c) { amblist.push_back(AmbRecord(AMB_UNDO,c)); }
-	void alt(Trampoline (*c)(Search &)) { amblist.push_back(AmbRecord(AMB_ALT, trampoline(c, *this))); }
-	void alt(const CapturedCont &c){
-		amblist.push_back(AmbRecord(AMB_ALT, trampoline(c,*this)));
+	bool running() { return !failed; }
+	void save_undo(const Trampoline &c) { amblist.push_back(AmbRecord(AMB_UNDO, c)); }
+	void alt(Trampoline(*c)(Search &)) { amblist.push_back(AmbRecord(AMB_ALT, trampoline(c, *this))); }
+	void alt(const CapturedCont &c) {
+		amblist.push_back(AmbRecord(AMB_ALT, trampoline(c, *this)));
 	}
 	void alt(const UncountedCont &c) {
 		amblist.push_back(AmbRecord(AMB_ALT, trampoline(c, *this)));
 	}
+	void alt(const Subclause &c) {
+		amblist.push_back(AmbRecord(AMB_ALT, trampoline(c)));
+	}
+	void alt(const UncountedSubclause &c) {
+		amblist.push_back(AmbRecord(AMB_ALT, trampoline(c)));
+	}
+
 	void alt(const Trampoline &c) {
 		amblist.push_back(AmbRecord(AMB_ALT, c));
 	}
@@ -1212,7 +1255,7 @@ public:
 		amblist.pop_back();
 		return c; //tail call
 	}
-	int snip_start() { return (int)amblist.size()-1; }
+	int snip_start() { return (int)amblist.size() - 1; }
 	void snip(int pos) {
 		std::vector<AmbRecord> temp;
 		for (int i = (int)amblist.size() - 1; i > pos;--i) {
@@ -1238,47 +1281,47 @@ public:
 	}
 
 	template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
-	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5, P6 && p6) :initial(trampoline(f, *this, p1, p2, p3, p4, p5, p6)), captured_fail(trampoline(fail_fn, *this))
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5, P6 && p6) : initial(trampoline(f, *this, p1, p2, p3, p4, p5, p6)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
 
 	template <typename T, typename P1, typename P2, typename P3, typename P4, typename P5>
-	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5) :initial(trampoline(f, *this, p1, p2, p3, p4, p5)), captured_fail(trampoline(fail_fn, *this))
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5) : initial(trampoline(f, *this, p1, p2, p3, p4, p5)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
 
 	template <typename T, typename P1, typename P2, typename P3, typename P4>
-	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4) :initial(trampoline(f, *this, p1, p2, p3, p4)), captured_fail(trampoline(fail_fn, *this))
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3, P4 && p4) : initial(trampoline(f, *this, p1, p2, p3, p4)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
 
 	template <typename T, typename P1, typename P2, typename P3>
-	Search(T &&f, P1 && p1, P2 && p2, P3 && p3) :initial(trampoline(f, *this, p1, p2, p3)), captured_fail(trampoline(fail_fn, *this))
+	Search(T &&f, P1 && p1, P2 && p2, P3 && p3) : initial(trampoline(f, *this, p1, p2, p3)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
 
 	template <typename T, typename P1, typename P2>
-	Search(T &&f, P1 && p1, P2 && p2) :initial(trampoline(f, *this, p1, p2)), captured_fail(trampoline(fail_fn, *this))
+	Search(T &&f, P1 && p1, P2 && p2) : initial(trampoline(f, *this, p1, p2)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
 
 	template <typename T, typename P1>
-	Search(T &&f, P1 && p1) :initial(trampoline(f, *this,p1)), captured_fail(trampoline(fail_fn, *this))
+	Search(T &&f, P1 && p1) : initial(trampoline(f, *this, p1)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
 
 	template <typename T>
-	Search(T &&f ):initial(trampoline(f, *this)), captured_fail(trampoline(fail_fn, *this))
+	Search(T &&f) : initial(trampoline(f, *this)), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
-	Search(const Trampoline i) :initial(i), captured_fail (trampoline( fail_fn, *this))
+	Search(const Trampoline i) :initial(i), captured_fail(trampoline(fail_fn, *this))
 	{
 		new_amblist();
 	}
@@ -1289,9 +1332,9 @@ public:
 		if (!started) {
 			started = true;
 			failed = false;
-			c=initial;
+			c = initial;
 		}
-		else c=fail();
+		else c = fail();
 		do { c = c->execute(); } while (!c->isNull());
 		return !failed;
 	}
@@ -1314,7 +1357,7 @@ public:
 
 Trampoline _restore_unified(Search &s, LVar a_save, LValue restore_a)
 {
-	a_save->value = restore_a; 
+	a_save->value = restore_a;
 	return s.fail();
 }
 
@@ -1333,7 +1376,7 @@ bool _unify(Search &s, LVar &a, LVar&b)
 	}
 	else if (a_target.uninstanciatedp()) {
 		LValue restore_a = a_target.get()->value;
-		a_target->value= b_target.get()->value;
+		a_target->value = b_target.get()->value;
 		s.save_undo(trampoline(_restore_unified, s, a_target, restore_a));
 		return true;
 	}
@@ -1359,8 +1402,8 @@ bool _identical(LVar &a, LVar&b)
 	if (strict_equals(a_target, b_target)) return true; //test strict equals on uninstanciated {}{}{}
 	if (a_target.pairp() && b_target.pairp())
 	{
-		if (!_identical( a_target.car(), b_target.car())) return false;
-		return _identical( a_target.cdr(), b_target.cdr());
+		if (!_identical(a_target.car(), b_target.car())) return false;
+		return _identical(a_target.cdr(), b_target.cdr());
 	}
 	return false;
 }
@@ -1376,7 +1419,7 @@ enum InsertTailType { ClauseTail };
 //its clauses are running, nothing will break;
 struct DynamicClauseBase : public SimpleRefCount
 {
-	intrusive_ptr<DynamicClauseBase> next; 
+	intrusive_ptr<DynamicClauseBase> next;
 	DynamicClauseBase* prev;
 
 	virtual bool is_root() const { return true; }
@@ -1384,30 +1427,30 @@ struct DynamicClauseBase : public SimpleRefCount
 	DynamicClauseBase(ClauseRootType) : SimpleRefCount(SimpleRefCount::SINGLETON)
 	{
 		cout << "creating root " << this << endl;
-		next = prev = this; 
+		next = prev = this;
 	}
-	DynamicClauseBase(InsertHeadType, DynamicClauseBase *root) : next(root->next), prev(root) 
-	{ 
+	DynamicClauseBase(InsertHeadType, DynamicClauseBase *root) : next(root->next), prev(root)
+	{
 		cout << "creating at head " << this << endl;
 		root->next = this; next->prev = this;
 	}
-	DynamicClauseBase(InsertTailType, DynamicClauseBase *root) : next(root), prev(root->prev) 
-	{ 
+	DynamicClauseBase(InsertTailType, DynamicClauseBase *root) : next(root), prev(root->prev)
+	{
 		cout << "creating at tail " << this << endl;
 		root->prev = this; prev->next = this;
 	}
 
-	void unlink() 
-	{ 
-		if (next != nullptr) next->prev = prev; 
+	void unlink()
+	{
+		if (next != nullptr) next->prev = prev;
 		if (prev != nullptr) prev->next = next;
 		next = nullptr;
 		prev = nullptr;
 	}
-	virtual ~DynamicClauseBase() 
-	{ 
+	virtual ~DynamicClauseBase()
+	{
 		cout << "deleting " << this << endl;
-		unlink();  
+		unlink();
 	}
 
 };
@@ -1444,27 +1487,28 @@ protected:
 	{
 		if (last_ptr->next->is_root()) return final_continuation;
 		last_ptr = static_cast<DynamicClauseT<T> *>(last_ptr->next.get());
-		*stored_fn = last_ptr.value;
-		s.alt(next_clause, last_template, final_continuation, last_ptr, stored_fn);
+		*stored_fn = last_ptr->value;
+		s.alt(trampoline(next_clause, s, last_template, final_continuation, last_ptr, stored_fn));
 		return last_template;
 	}
 
 	Trampoline _apply(Search&s, Trampoline initial, Trampoline final_continuation)
 	{
-		intrusive_ptr<DynamicClauseT<T>> first = static_cast<DynamicClauseT<T>*>(root->next);
-		T * stored_fn=nullptr;
+		intrusive_ptr<DynamicClauseT<T>> first = static_cast<DynamicClauseT<T>*>(root.next.get());
+		T * stored_fn = nullptr;
 		initial->_for_retargetting(&stored_fn);
 		assert(stored_fn != nullptr);
-		s.alt(template(next_clause<T>, s, initial, final_continuation, first, stored_fn));
+		s.alt(trampoline(next_clause, s, initial, final_continuation, first, stored_fn));
 		return initial;
 	}
+	DynamicPredicate(const DynamicPredicate &) {}//no copy!
 public:
 	DynamicPredicate() :root(ClauseRoot) {}
-	~DynamicPredicate() { 
+	~DynamicPredicate() {
 		root.next->prev = nullptr;
 		root.next = nullptr; //break chain		
 	}
-	
+
 
 	DynamicClause asserta(T f)
 	{
@@ -1497,51 +1541,51 @@ public:
 	}
 	void retract_all()
 	{
-		root->next->prev = nullptr;
-		root->next = &root; //break chain	
-		root->prev = &root;
+		root.next->prev = nullptr;
+		root.next = &root; //break chain	
+		root.prev = &root;
 	}
-	
-	Trampoline operator () (Search &s,Trampoline c)
+
+	Trampoline operator () (Search &s, Trampoline c)
 	{
 		if (root.empty()) return s.fail();
 		int snip = s.snip_start();
-		return _appy(s, template(root->next->value, s, c, snip),c);
+		return _apply(s, trampoline(root.next->value, s, snip, c ), c);
 	}
 	template <typename P1>
 	Trampoline operator () (Search &s, Trampoline c, P1 && p1)
 	{
 		if (root.empty()) return s.fail();
 		int snip = s.snip_start();
-		return _appy(s, template(root->next->value, s, c, snip, p1), c);
+		return _apply(s, trampoline(static_cast<DynamicClauseT<T>&>(*root.next).value, s, snip, c, p1), c);
 	}
 	template <typename P1, typename P2>
 	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2)
 	{
 		if (root.empty()) return s.fail();
 		int snip = s.snip_start();
-		return _appy(s, template(root->next->value, s, c, snip, p1,p2), c);
+		return _apply(s, trampoline(static_cast<DynamicClauseT<T>&>(*root.next).value, s, snip, c, p1, p2), c);
 	}
 	template <typename P1, typename P2, typename P3>
 	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2, P3 && p3)
 	{
 		if (root.empty()) return s.fail();
 		int snip = s.snip_start();
-		return _appy(s, template(root->next->value, s, c, snip, p1, p2,p3), c);
+		return _apply(s, trampoline(static_cast<DynamicClauseT<T>&>(*root.next).value, s, snip, c, p1, p2, p3), c);
 	}
 	template <typename P1, typename P2, typename P3, typename P4>
 	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2, P3 && p3, P4 && p4)
 	{
 		if (root.empty()) return s.fail();
 		int snip = s.snip_start();
-		return _appy(s, template(root->next->value, s, c, snip, p1, p2, p3,p4), c);
+		return _apply(s, trampoline(static_cast<DynamicClauseT<T>&>(*root.next).value, s, snip, c, p1, p2, p3, p4), c);
 	}
 	template <typename P1, typename P2, typename P3, typename P4, typename P5>
 	Trampoline operator () (Search &s, Trampoline c, P1 && p1, P2 && p2, P3 && p3, P4 && p4, P5 && p5)
 	{
 		if (root.empty()) return s.fail();
 		int snip = s.snip_start();
-		return _appy(s, template(root->next->value, s, c, snip, p1, p2, p3, p4,p5), c);
+		return _apply(s, trampoline(static_cast<DynamicClauseT<T>&>(*root.next).value, s, snip,c, p1, p2, p3, p4, p5), c);
 	}
 
 };
@@ -1549,40 +1593,40 @@ public:
 
 Trampoline unify_tests(Search &s)
 {
-	LVar A, B, C,D,E,F,G;
-	LVar hello("hello"), one(1), willBeHello, willBeOne,l1(L(A,"hello",B,L(one,C,hello),F));
-	CapturedCont c,d,e,f,g,h,i,j,k,l;
+	LVar A, B, C, D, E, F, G;
+	LVar hello("hello"), one(1), willBeHello, willBeOne, l1(L(A, "hello", B, L(one, C, hello), F));
+	CapturedCont c, d, e, f, g, h, i, j, k, l;
 	*c = [=](Search &s)
-	{ 
-		cout << hello <<"?="<< willBeHello << endl;
-		return s.identical(1, one, trampoline(d,s));
+	{
+		cout << hello << "?=" << willBeHello << endl;
+		return s.identical(1, one, trampoline(d, s));
 	};
-	*d = [=](Search &s) { 
+	*d = [=](Search &s) {
 		cout << one << "?=" << willBeOne << endl;
 		s.alt(f);
-		return s.identical(hello, "hello", trampoline(e,s));
+		return s.identical(hello, "hello", trampoline(e, s));
 	};
-	*e = [=](Search &s) { 
+	*e = [=](Search &s) {
 		cout << "compare with string succeeded" << endl;
 		s.alt(g);
-		return s.identical(F, G, trampoline(h,s));
+		return s.identical(F, G, trampoline(h, s));
 
 	};
 	*f = [=](Search &s) { cout << "compare with string failed" << endl; return end_search; };
-	*g = [=](Search &s) 
-	{ 
+	*g = [=](Search &s)
+	{
 		cout << "unlike compare with vars did the right thing" << endl;
 		s.alt(i);
-		return s.unify(l1, L("Say", D, "there", L(E, 2, "hello"), G),trampoline(j,s));
+		return s.unify(l1, L("Say", D, "there", L(E, 2, "hello"), G), trampoline(j, s));
 	};
 	*h = [=](Search &s) { cout << "unlike compare with vars did the wrong thing" << endl; return end_search; };
 	*i = [=](Search &s) { cout << "list unify failed" << A << " " << D << " " << B << " " << E << " " << C << endl; return end_search; };
-	*j = [=](Search &s) { s.alt(l); return s.identical(F,G,trampoline(k,s));};
-	*k = [=](Search &s) { cout << "list unify: " <<A<<" "<<D<<" "<<B<<" "<<E<<" "<<C<<" "<<F<<" "<<G<< endl; return end_search; };
+	*j = [=](Search &s) { s.alt(l); return s.identical(F, G, trampoline(k, s));};
+	*k = [=](Search &s) { cout << "list unify: " << A << " " << D << " " << B << " " << E << " " << C << " " << F << " " << G << endl; return end_search; };
 	*l = [=](Search &s) { cout << "var unify failed" << endl; return end_search; };
 
 
-	return s.unify(hello, willBeHello,trampoline(c,s));
+	return s.unify(hello, willBeHello, trampoline(c, s));
 }
 //oops, the return value could be nixed by stack clean exception
 //but it worked when I made it always throw... {}{}{} WHY DOES IT WORK?
@@ -1594,20 +1638,20 @@ Trampoline stream1(Search &s, CapturedVar<int> m, Trampoline c)
 
 
 	*rest = [=](Search &s, int n)
-	{ 
+	{
 		n = n + 1;
 		if (n == 10) {
 			return s.fail();
 		}
 		else {
-			s.alt(trampoline(rest_uncounted,s,n));
+			s.alt(trampoline(rest_uncounted, s, n));
 			*m = n;
-//			cout << "n is " << *n << endl;
+			//			cout << "n is " << *n << endl;
 			return c;
 		}
 	};
 	cout << rest.get()->use_count() << endl;
-	return trampoline(rest,s,0);
+	return trampoline(rest, s, 0);
 }
 
 
@@ -1624,13 +1668,13 @@ Trampoline stream2(Search &s, CapturedVar<int> m, Trampoline c)
 			return s.fail();
 		}
 		else {
-			s.alt(trampoline(rest_uncounted,s,n));
-//			cout << "m is " << *n * *n << endl;
+			s.alt(trampoline(rest_uncounted, s, n));
+			//			cout << "m is " << *n * *n << endl;
 			*m = n * n;
 			return c;
 		}
 	};
-	return trampoline(rest,s,0);
+	return trampoline(rest, s, 0);
 }
 
 Trampoline AmbTest(Search &s)
@@ -1642,7 +1686,7 @@ Trampoline AmbTest(Search &s)
 
 	//note it can't safely use Search inside of functions that return a value
 	*c1 = [=](Search &s) { return stream1(s, n, trampoline(c2_u, s)); };
-	*c2 = [=](Search &s) { return stream2(s,m,trampoline(c3_u, s)); };
+	*c2 = [=](Search &s) { return stream2(s, m, trampoline(c3_u, s)); };
 	*c3 = [=](Search &s)
 	{
 		if (*n != *m) return s.fail();
@@ -1655,19 +1699,19 @@ Trampoline AmbTest(Search &s)
 	cout << c1.get()->use_count() << endl;
 	cout << c2.get()->use_count() << endl;
 	cout << c3.get()->use_count() << endl;
-	return trampoline(c1,s);
+	return trampoline(c1, s);
 }
 
 #define OUT_OS_TYPE(TYPE) if (v.type() == typeid(TYPE)) { os << any_cast<TYPE>(v); } else
 inline std::ostream & operator<<(std::ostream & os, const boost::any &v)
 {
 	OUT_OS_TYPE(int)
-	OUT_OS_TYPE(double)
-	OUT_OS_TYPE(std::string)
-	OUT_OS_TYPE(const char *)
-	OUT_OS_TYPE(LVar)
-//	OUT_OS_TYPE(LogicalVariant)
-//	OUT_OS_TYPE(LValue)
+		OUT_OS_TYPE(double)
+		OUT_OS_TYPE(std::string)
+		OUT_OS_TYPE(const char *)
+		OUT_OS_TYPE(LVar)
+		//	OUT_OS_TYPE(LogicalVariant)
+		//	OUT_OS_TYPE(LValue)
 	{
 		os << "[unhandled type]";
 	}
@@ -1718,12 +1762,12 @@ Trampoline QueenRow(Search &s, int ru)// {int row}
 {
 	//CapturedVar<int> r = ru;
 	CapturedCont c;
-	CapturedLambda(Search &, int,int) loop;
-	UncountedLambda(Search &,int,int) loopu = loop;
+	CapturedLambda(Search &, int, int) loop;
+	UncountedLambda(Search &, int, int) loopu = loop;
 
-//	cout << "r = " << *r << endl;
+	//	cout << "r = " << *r << endl;
 
-	*c = [=](Search &s) 
+	*c = [=](Search &s)
 	{
 		cout << "Solution: ";
 		for (int y = 0;y < QUEENS;++y) cout << rowsx[y] << ' ';
@@ -1733,21 +1777,24 @@ Trampoline QueenRow(Search &s, int ru)// {int row}
 	*loop = [=](Search &s, int  n, int r)
 	{
 		//CapturedVar<int> nu = n;
-//		UncountedLambda(Search &, int, int) loop_restu(CombineRef,loopu);
+		//		UncountedLambda(Search &, int, int) loop_restu(CombineRef,loopu);
 
-		
-//		*loop_restu = [=](Search &s, int n,int r) { return trampoline(loopu,s, n + 1, r ); };
+
+		//		*loop_restu = [=](Search &s, int n,int r) { return trampoline(loopu,s, n + 1, r ); };
 		if (n <= QUEENS) {
-			s.alt(trampoline(loopu,s,n+1,r));
+			s.alt(trampoline(loopu, s, n + 1, r));
 			if (!distinct_from_all(n, r)) return s.fail();
 			else {
-				if (r < QUEENS) return trampoline(QueenRow,s, r + 1 );
+				if (r < QUEENS) return trampoline(QueenRow, s, r + 1);
 				else return trampoline(c, s);
 			}
-		}else return s.fail();
+		}
+		else return s.fail();
 	};
-	return trampoline(loop, s, 1 , ru);
+	return trampoline(loop, s, 1, ru);
 }
+
+InternedString eats("eats"), plays("plays"), with("with"), bat("bat"), cat("cat"), the("the"), IS_v("v"), IS_d("d"), IS_np("np"), IS_n("n"), IS_a("a");
 
 //verb([eats | O], O, v(eats)).
 //verb([plays with | O], O, v(plays with)).
@@ -1755,10 +1802,10 @@ Trampoline verb(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
 	LVar O;
 
-	CapturedCont rest;
-	*rest = [=](Search &s) { return s.unify(L(X, Y, Z), L(L("plays","with", DOT, O), O, L("v", "plays", "with")), c); };
-	s.alt(rest);
-	return s.unify(L(X, Y, Z), L(L("eats", DOT, O), O, L("v", "eats")), c);
+	Subclause rest;
+	*rest = [=, &s]() { return s.unify(L(X, Y, Z), L(L(plays, with, DOT, O), O, L(IS_v, plays, with)), c); };
+	s.alt(trampoline(rest));
+	return s.unify(L(X, Y, Z), L(L(eats, DOT, O), O, L(IS_v, eats)), c);
 }
 
 
@@ -1769,10 +1816,10 @@ Trampoline noun(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
 	LVar O;
 
-	CapturedCont rest;
-	*rest = [=](Search &s) { return s.unify(L(X, Y, Z), L(L("cat", DOT, O), O, L("n","cat")),c); };
+	Subclause rest;
+	*rest = [=, &s]() { return s.unify(L(X, Y, Z), L(L(cat, DOT, O), O, L(IS_n, cat)), c); };
 	s.alt(rest);
-	return s.unify(L(X, Y, Z), L(L("bat", DOT, O), O, L("n", "bat")),c);
+	return s.unify(L(X, Y, Z), L(L(bat, DOT, O), O, L(IS_n, bat)), c);
 }
 
 //det([the | O], O, d(the)).
@@ -1781,49 +1828,49 @@ Trampoline det(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
 	LVar O;
 
-	CapturedCont rest;
-	*rest = [=](Search &s) { return s.unify(L(X, Y, Z), L(L("a", DOT, O), O, L("d", "a")), c); };
+	Subclause rest;
+	*rest = [=, &s]() { return s.unify(L(X, Y, Z), L(L(IS_a, DOT, O), O, L(IS_d, IS_a)), c); };
 	s.alt(rest);
-	return s.unify(L(X, Y, Z), L(L("the", DOT, O), O, L("d", "the")), c);
+	return s.unify(L(X, Y, Z), L(L(the, DOT, O), O, L(IS_d, the)), c);
 }
 //noun_phrase(A,B,np(D,N)) :- det(A,C,D), noun(C,B,N).
 Trampoline noun_phrase(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
 	LVar A, B, C, D, N;
-	CapturedCont r1, r2;
+	Subclause r1, r2;
 
-	*r1 = [=](Search &s) { return trampoline(det, s, trampoline(r2,s),A,C,D ); };
-	*r2 = [=](Search &s) { return trampoline(noun, s, c,C,B,N ); };
-	return s.unify(L(X, Y, Z), L(A, B, L("np", D, N)), trampoline(r1,s));
+	*r1 = [=, &s]() { return det(s, r2, A, C, D); };
+	*r2 = [=, &s]() { return noun(s, c, C, B, N); };
+	return s.unify(L(X, Y, Z), L(A, B, L(IS_np, D, N)), r1);
 }
 
 //verb_phrase(A,B,vp(V,NP)):- verb(A,C,V), noun_phrase(C,B,NP).
 Trampoline verb_phrase(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
-	LVar  A,B,C,V,NP;
-	CapturedCont r1,r2;
+	LVar  A, B, C, V, NP;
+	Subclause r1, r2;
 
-	*r1 = [=](Search &s) { return trampoline(verb, s, trampoline(r2,s),A,C,V); };
-	*r2 = [=](Search &s) { return trampoline(noun_phrase, s, c,C,B,NP); };
-	return s.unify(L(X,Y,Z),L(A,B,L("vp",V,NP)), trampoline(r1,s) );
+	*r1 = [=, &s]() { return verb(s, r2, A, C, V); };
+	*r2 = [=, &s]() { return noun_phrase(s, c, C, B, NP); };
+	return s.unify(L(X, Y, Z), L(A, B, L("vp", V, NP)), r1);
 }
 //sentence(A, B, s(NP, VP)) :-noun_phrase(A, C, NP), verb_phrase(C, B, VP).
 Trampoline sentence(Search &s, Trampoline c, LVar X, LVar Y, LVar Z)
 {
 	LVar  A, B, C, VP, NP;
-	CapturedCont r1, r2;
+	Subclause r1, r2;
 
-	*r1 = [=](Search &s) { return trampoline(noun_phrase, s, trampoline(r2,s),A,C,NP ); };
-	*r2 = [=](Search &s) { return trampoline(verb_phrase, s, c,C,B,VP ); };
-	return s.unify(L(X, Y, Z), L(A, B, L("s", NP, VP)), trampoline(r1,s));
+	*r1 = [=, &s]() { return noun_phrase(s, r2, A, C, NP); };
+	*r2 = [=, &s]() { return verb_phrase(s, c, C, B, VP); };
+	return s.unify(L(X, Y, Z), L(A, B, L("s", NP, VP)), r1);
 }
 
 Trampoline gen_sentences(Search &s)
 {
 	LVar T, _, S;
-	CapturedCont display;
-	*display = [=](Search &s) { cout << "sentence: " << T << endl << "parse: " << S << endl; return end_search; };
-	return trampoline(sentence, s, trampoline(display,s),T,_,S );
+	Subclause display;
+	*display = [=, &s]() { cout << "sentence: " << T << endl << "parse: " << S << endl; return end_search; };
+	return sentence(s, display, T, _, S);
 }
 
 
@@ -1844,7 +1891,7 @@ int main()
 	std::cout << (LValue(InternedString("Hello")) == LValue(55)) << std::endl;
 	std::cout << (LValue(55) == LValue(55)) << std::endl;
 	std::cout << TypeNames[D.type()] << std::endl;
-	std::cout << A <<' '<< B << ' ' << C << ' ' << D<<' '<<E<<' '<<F<<' '<<&F.get_target() << std::endl;
+	std::cout << A << ' ' << B << ' ' << C << ' ' << D << ' ' << E << ' ' << F << ' ' << &F.get_target() << std::endl;
 	LVar M = L(1, DOT, 2);
 	std::cout << L("hello", 1, "Laurie") << L(1, L(2, 3), 4) << M << std::endl;
 
@@ -1862,7 +1909,7 @@ int main()
 	while (g());
 
 
-	Search q(QueenRow,  1 );
+	Search q(QueenRow, 1);
 	q();
 	Search u(unify_tests);
 	u();
@@ -1872,16 +1919,40 @@ int main()
 	LVar C1(1.0), C2(1.0);
 	LVar D1, D2;
 	D1.chain(A1);D2.chain(A1);
-	cout << "equals tests " << strict_equals(A1,A1 ) << " " << strict_equals(B1,B2 ) << " " << strict_equals(C1,C2 ) << " " << strict_equals(D1,D2 ) << " " << endl;
+	cout << "equals tests " << strict_equals(A1, A1) << " " << strict_equals(B1, B2) << " " << strict_equals(C1, C2) << " " << strict_equals(D1, D2) << " " << endl;
 	LVar A2;
 	LVar B3("There");
 	LVar C3(2.0);
 	LVar D3;D2.chain(A2);
 	cout << "equals tests " << strict_equals(A1, A2) << " " << strict_equals(B1, B3) << " " << strict_equals(C1, C3) << " " << strict_equals(D1, D3) << " " << endl;
-	
-	DynamicPredicate<CapturedLambda(Search &, Trampoline, int, LVar)> dynamic_test;
+
+	DynamicPredicate<CapturedLambda(Search &, int, Trampoline, LVar)> dynamic_test;
 	DynamicClause dog, cat, person;
 
-	dog = dynamic_test.asserta([](Search &s, Trampoline c, int cut, LVar animal) { return c; });
+	dog = dynamic_test.asserta([](Search &s, int cut, Trampoline c, LVar Animal) { return s.unify(Animal, "dog", c); });
+	LVar Animal;
+	Search animals(std::function<Trampoline(Search&,Trampoline,LVar)>(std::ref(dynamic_test)),end_search, Animal);
+	cout << "should be just dog" << endl;
+	while (animals()) cout << Animal << endl;
+	cat = dynamic_test.assertz([](Search &s, int cut, Trampoline c, LVar Animal) { return s.unify(Animal, "cat", c); });
+	cout << "should be dog, cat" << endl;
+	animals.reset();
+	while (animals()) cout << Animal << endl;
+	person = dynamic_test.asserta([](Search &s, int cut, Trampoline c, LVar Animal) { return s.unify(Animal, "person", c); });
+	cout << "should be person, dog, cat" << endl;
+	animals.reset();
+	while (animals()) cout << Animal << endl;
+	dynamic_test.retract(dog);
+	cout << "should be person, cat" << endl;
+	animals.reset();
+	while (animals()) cout << Animal << endl;
+	dynamic_test.retract(person);
+	cout << "should be cat" << endl;
+	animals.reset();
+	while (animals()) cout << Animal << endl;
+	dynamic_test.retract(cat);
+	cout << "should be empty" << endl;
+	animals.reset();
+	while (animals()) cout << Animal << endl;
 
 }
